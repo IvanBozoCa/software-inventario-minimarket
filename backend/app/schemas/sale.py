@@ -52,6 +52,11 @@ class ScanBarcodeRequest(BaseModel):
         return value
 
 
+class AddProductRequest(BaseModel):
+    product_id: UUID
+    quantity: Decimal = Field(default=Decimal("1.000"), gt=0)
+
+
 class AddFreeAmountRequest(BaseModel):
     amount_clp: int = Field(gt=0)
     description: str = Field(default="Monto libre", min_length=1, max_length=200)

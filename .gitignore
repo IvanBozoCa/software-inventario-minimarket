@@ -29,3 +29,8 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# Test artifacts
+frontend/test-results/
+frontend/playwright-report/
+frontend/coverage/

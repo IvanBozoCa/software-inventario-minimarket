@@ -139,7 +139,6 @@ def scan_product_by_barcode(
             unit_price_clp=product.sale_price_clp,
             line_total_clp=product.sale_price_clp,
         )
-        sale.items.append(item)
 
     _recalculate_sale(sale)
     db.commit()
@@ -172,7 +171,6 @@ def add_free_amount(
         unit_price_clp=amount_clp,
         line_total_clp=amount_clp,
     )
-    sale.items.append(item)
     _recalculate_sale(sale)
 
     db.commit()

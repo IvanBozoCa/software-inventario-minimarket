@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from enum import Enum as PythonEnum
 from uuid import UUID
 
@@ -12,6 +12,7 @@ from app.models.sale import Sale, SaleItem, SaleItemType, SaleStatus
 
 
 ONE_ITEM = Decimal("1.000")
+QUANTITY_QUANTUM = Decimal("0.001")
 
 
 class SaleError(ValueError):
@@ -27,6 +28,18 @@ class SaleNotDraftError(SaleError):
 
 
 class SaleItemNotFoundError(SaleError):
+    pass
+
+
+class ProductNotFoundError(SaleError):
+    pass
+
+
+class ProductManualPriceRequiredError(SaleError):
+    pass
+
+
+class InvalidSaleQuantityError(SaleError):
     pass
 
 
@@ -54,6 +67,18 @@ def _get_draft_sale_or_raise(db: Session, sale_id: UUID) -> Sale:
     return sale
 
 
+def _normalize_quantity(value: Decimal | int | str) -> Decimal:
+    try:
+        quantity = Decimal(str(value)).quantize(QUANTITY_QUANTUM)
+    except (InvalidOperation, ValueError) as exc:
+        raise InvalidSaleQuantityError("La cantidad debe ser un número válido") from exc
+
+    if quantity <= 0:
+        raise InvalidSaleQuantityError("La cantidad debe ser mayor que cero")
+
+    return quantity
+
+
 def _line_total(quantity: Decimal, unit_price_clp: int) -> int:
     return int(
         (quantity * Decimal(unit_price_clp)).quantize(
@@ -67,6 +92,54 @@ def _recalculate_sale(sale: Sale) -> None:
     total = sum(item.line_total_clp for item in sale.items)
     sale.subtotal_clp = total
     sale.total_clp = total
+
+
+def _validate_fixed_price_product(product: Product) -> None:
+    if (
+        product.price_mode != PriceMode.FIXED
+        or product.sale_price_clp is None
+        or product.sale_mode == SaleMode.FREE_AMOUNT
+    ):
+        raise ProductManualPriceRequiredError(
+            "Este producto necesita que ingreses el monto manualmente",
+        )
+
+
+def _add_product_snapshot(
+    sale: Sale,
+    product: Product,
+    quantity: Decimal,
+) -> SaleItem:
+    existing_item = next(
+        (
+            item
+            for item in sale.items
+            if item.item_type == SaleItemType.PRODUCT
+            and item.product_id == product.id
+            and item.unit_price_clp == product.sale_price_clp
+            and item.description_snapshot == product.name
+        ),
+        None,
+    )
+
+    if existing_item is not None:
+        existing_item.quantity = Decimal(existing_item.quantity) + quantity
+        existing_item.line_total_clp = _line_total(
+            Decimal(existing_item.quantity),
+            existing_item.unit_price_clp,
+        )
+        return existing_item
+
+    item = SaleItem(
+        product_id=product.id,
+        item_type=SaleItemType.PRODUCT,
+        description_snapshot=product.name,
+        quantity=quantity,
+        unit_price_clp=product.sale_price_clp,
+        line_total_clp=_line_total(quantity, product.sale_price_clp),
+    )
+    sale.items.append(item)
+    return item
 
 
 def create_draft_sale(db: Session) -> Sale:
@@ -83,6 +156,29 @@ def create_draft_sale(db: Session) -> Sale:
 
 def get_sale(db: Session, sale_id: UUID) -> Sale:
     return _get_sale_or_raise(db, sale_id)
+
+
+def add_product_to_draft(
+    db: Session,
+    sale_id: UUID,
+    product_id: UUID,
+    *,
+    quantity: Decimal | int | str = ONE_ITEM,
+) -> tuple[Sale, SaleItem]:
+    sale = _get_draft_sale_or_raise(db, sale_id)
+    product = db.get(Product, product_id)
+
+    if product is None or not product.active:
+        raise ProductNotFoundError("Producto no encontrado")
+
+    _validate_fixed_price_product(product)
+    normalized_quantity = _normalize_quantity(quantity)
+    item = _add_product_snapshot(sale, product, normalized_quantity)
+
+    _recalculate_sale(sale)
+    db.commit()
+    db.refresh(sale)
+    return sale, item
 
 
 def scan_product_by_barcode(
@@ -103,43 +199,12 @@ def scan_product_by_barcode(
     if product is None:
         return ScanOutcome.UNKNOWN_BARCODE, sale, None
 
-    if (
-        product.price_mode != PriceMode.FIXED
-        or product.sale_price_clp is None
-        or product.sale_mode == SaleMode.FREE_AMOUNT
-    ):
+    try:
+        _validate_fixed_price_product(product)
+    except ProductManualPriceRequiredError:
         return ScanOutcome.MANUAL_PRICE_REQUIRED, sale, None
 
-    existing_item = next(
-        (
-            item
-            for item in sale.items
-            if item.item_type == SaleItemType.PRODUCT
-            and item.product_id == product.id
-            and item.unit_price_clp == product.sale_price_clp
-            and item.description_snapshot == product.name
-        ),
-        None,
-    )
-
-    if existing_item is not None:
-        existing_item.quantity = Decimal(existing_item.quantity) + ONE_ITEM
-        existing_item.line_total_clp = _line_total(
-            Decimal(existing_item.quantity),
-            existing_item.unit_price_clp,
-        )
-        item = existing_item
-    else:
-        item = SaleItem(
-            product_id=product.id,
-            item_type=SaleItemType.PRODUCT,
-            description_snapshot=product.name,
-            quantity=ONE_ITEM,
-            unit_price_clp=product.sale_price_clp,
-            line_total_clp=product.sale_price_clp,
-        )
-        sale.items.append(item)
-
+    item = _add_product_snapshot(sale, product, ONE_ITEM)
     _recalculate_sale(sale)
     db.commit()
     db.refresh(sale)

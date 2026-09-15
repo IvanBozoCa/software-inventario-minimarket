@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.schemas.sale import (
     AddFreeAmountRequest,
+    AddProductRequest,
     SaleRead,
     ScanBarcodeRequest,
     ScanBarcodeResponse,
@@ -13,11 +14,15 @@ from app.schemas.sale import (
 )
 from app.services.sales import (
     InvalidFreeAmountError,
+    InvalidSaleQuantityError,
+    ProductManualPriceRequiredError,
+    ProductNotFoundError,
     SaleItemNotFoundError,
     SaleNotDraftError,
     SaleNotFoundError,
     ScanOutcome,
     add_free_amount,
+    add_product_to_draft,
     create_draft_sale,
     delete_draft_item,
     get_sale,
@@ -28,12 +33,7 @@ router = APIRouter(prefix="/sales", tags=["sales"])
 
 
 def _raise_sale_http_error(exc: Exception) -> None:
-    if isinstance(exc, SaleNotFoundError):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(exc),
-        ) from exc
-    if isinstance(exc, SaleItemNotFoundError):
+    if isinstance(exc, (SaleNotFoundError, SaleItemNotFoundError, ProductNotFoundError)):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
@@ -43,7 +43,12 @@ def _raise_sale_http_error(exc: Exception) -> None:
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
-    if isinstance(exc, InvalidFreeAmountError):
+    if isinstance(exc, ProductManualPriceRequiredError):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    if isinstance(exc, (InvalidFreeAmountError, InvalidSaleQuantityError)):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
@@ -108,6 +113,34 @@ def scan_sale_product(
         added_item_id=item.id if item is not None else None,
         sale=sale,
     )
+
+
+@router.post(
+    "/{sale_id}/items/product",
+    response_model=SaleRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_sale_product(
+    sale_id: UUID,
+    payload: AddProductRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        sale, _ = add_product_to_draft(
+            db,
+            sale_id,
+            payload.product_id,
+            quantity=payload.quantity,
+        )
+        return sale
+    except (
+        SaleNotFoundError,
+        SaleNotDraftError,
+        ProductNotFoundError,
+        ProductManualPriceRequiredError,
+        InvalidSaleQuantityError,
+    ) as exc:
+        _raise_sale_http_error(exc)
 
 
 @router.post(

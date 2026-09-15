@@ -1,10 +1,14 @@
 from app.models.category import Category
+from app.models.payment import Payment, PaymentMethod, PaymentStatus
 from app.models.product import PriceMode, Product, SaleMode
 from app.models.sale import Sale, SaleItem, SaleItemType, SaleStatus
 from app.models.stock_movement import StockMovement, StockMovementType
 
 __all__ = [
     "Category",
+    "Payment",
+    "PaymentMethod",
+    "PaymentStatus",
     "Product",
     "SaleMode",
     "PriceMode",

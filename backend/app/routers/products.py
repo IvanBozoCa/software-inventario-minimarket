@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -88,11 +88,23 @@ def create_product(
 @router.get("", response_model=list[ProductRead])
 def list_products(
     include_inactive: bool = False,
+    search: str | None = None,
     db: Session = Depends(get_db),
 ) -> list[Product]:
     statement = select(Product)
+
     if not include_inactive:
         statement = statement.where(Product.active.is_(True))
+
+    if search is not None and search.strip():
+        term = search.strip()
+        statement = statement.where(
+            or_(
+                Product.name.ilike(f"%{term}%"),
+                Product.barcode == term,
+            )
+        )
+
     statement = statement.order_by(Product.name)
     return list(db.scalars(statement).all())
 

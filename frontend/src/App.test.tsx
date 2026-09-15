@@ -6,26 +6,53 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
 
+const emptyDraft = {
+  id: "11111111-1111-1111-1111-111111111111",
+  status: "DRAFT",
+  subtotal_clp: 0,
+  total_clp: 0,
+  items: [],
+};
+
 describe("App", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    localStorage.clear();
   });
 
-  it("muestra que el backend esta disponible", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ status: "ok" }),
-      }),
-    );
+  it("inicia una venta borrador y muestra las acciones principales de caja", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (input, init) => {
+      const url = String(input);
+
+      if (url.endsWith("/health")) {
+        return {
+          ok: true,
+          json: async () => ({ status: "ok" }),
+        };
+      }
+
+      if (url.endsWith("/sales/draft") && init?.method === "POST") {
+        return {
+          ok: true,
+          json: async () => emptyDraft,
+        };
+      }
+
+      throw new Error(`Solicitud inesperada: ${url}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
 
     render(<App />);
 
     expect(
-      screen.getByText("Software Inventario Minimarket"),
+      await screen.findByRole("heading", { level: 1, name: "Venta" }),
     ).toBeInTheDocument();
-
-    expect(await screen.findByText("Backend: ok")).toBeInTheDocument();
+    expect(await screen.findByText("Sistema listo")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "AGREGAR" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "BUSCAR PRODUCTO" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "AGREGAR MONTO" })).toBeEnabled();
+    expect(screen.getByText("Aún no hay productos")).toBeInTheDocument();
+    expect(localStorage.getItem("minimarket.activeSaleId")).toBe(emptyDraft.id);
   });
 });

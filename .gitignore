@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Entorno virtual
+backend/.venv/
+
+# Base de datos local
+backend/*.db
+backend/*.db-shm
+backend/*.db-wal
+
+# Alembic/Python cache
+backend/alembic/__pycache__/
+backend/alembic/versions/__pycache__/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# IDE / sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Variables locales
+.env
+.env.*
+!.env.example

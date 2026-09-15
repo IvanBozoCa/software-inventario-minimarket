@@ -131,7 +131,6 @@ def scan_product_by_barcode(
         item = existing_item
     else:
         item = SaleItem(
-            sale=sale,
             product_id=product.id,
             item_type=SaleItemType.PRODUCT,
             description_snapshot=product.name,
@@ -139,6 +138,7 @@ def scan_product_by_barcode(
             unit_price_clp=product.sale_price_clp,
             line_total_clp=product.sale_price_clp,
         )
+        sale.items.append(item)
 
     _recalculate_sale(sale)
     db.commit()
@@ -163,7 +163,6 @@ def add_free_amount(
         raise InvalidFreeAmountError("La descripción no puede estar vacía")
 
     item = SaleItem(
-        sale=sale,
         product_id=None,
         item_type=SaleItemType.FREE_AMOUNT,
         description_snapshot=normalized_description,
@@ -171,6 +170,7 @@ def add_free_amount(
         unit_price_clp=amount_clp,
         line_total_clp=amount_clp,
     )
+    sale.items.append(item)
     _recalculate_sale(sale)
 
     db.commit()

@@ -216,6 +216,51 @@ def test_product_search_by_name_supports_sale_fallback(client: TestClient):
     assert products[0]["name"] == "Bebida Naranja 1.5L"
 
 
+def test_product_found_by_search_can_be_added_to_draft(client: TestClient):
+    product = create_product(
+        client,
+        name="Arroz Grado 1",
+        barcode="780000000012",
+        price=1450,
+    )
+    sale = create_draft(client)
+
+    response = client.post(
+        f"/sales/{sale['id']}/items/product",
+        json={"product_id": product["id"], "quantity": "2.000"},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["status"] == "DRAFT"
+    assert body["total_clp"] == 2900
+    assert len(body["items"]) == 1
+    assert body["items"][0]["product_id"] == product["id"]
+    assert body["items"][0]["quantity"] == "2.000"
+    assert body["items"][0]["unit_price_clp"] == 1450
+
+
+def test_selected_product_with_free_price_requests_manual_amount(client: TestClient):
+    product = create_product(
+        client,
+        name="Producto precio libre",
+        barcode="780000000013",
+        price=None,
+        price_mode="FREE",
+    )
+    sale = create_draft(client)
+
+    response = client.post(
+        f"/sales/{sale['id']}/items/product",
+        json={"product_id": product["id"]},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "Este producto necesita que ingreses el monto manualmente"
+    )
+
+
 def test_price_snapshot_is_preserved_if_catalog_price_changes_mid_sale(
     client: TestClient,
 ):

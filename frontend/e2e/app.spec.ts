@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("frontend y backend completan una venta en efectivo", async ({ page }) => {
+test("frontend y backend recuperan una venta y la completan en efectivo", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByRole("heading", { level: 1, name: "Venta" })).toBeVisible();
@@ -19,6 +19,15 @@ test("frontend y backend completan una venta en efectivo", async ({ page }) => {
     .locator(".action-card")
     .getByRole("button", { name: "AGREGAR MONTO", exact: true })
     .click();
+
+  await expect(page.getByRole("button", { name: "EFECTIVO" })).toBeEnabled();
+
+  await page.reload();
+
+  await expect(page.getByText("VENTA SIN TERMINAR", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "CONTINUAR VENTA" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "DESCARTAR VENTA" })).toBeVisible();
+  await page.getByRole("button", { name: "CONTINUAR VENTA" }).click();
 
   await expect(page.getByRole("button", { name: "EFECTIVO" })).toBeEnabled();
   await page.getByRole("button", { name: "EFECTIVO" }).click();

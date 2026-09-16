@@ -5,7 +5,9 @@ test("frontend y backend recuperan una venta y la completan en efectivo", async 
 
   await expect(page.getByRole("heading", { level: 1, name: "Venta" })).toBeVisible();
   await expect(page.getByText("Sistema listo")).toBeVisible();
-  await expect(page.getByText("Venta en curso")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 2, name: "Venta en curso" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "AGREGAR", exact: true }),
   ).toBeVisible();

@@ -4,6 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.schemas.payment import (
+    CardPaymentRequest,
+    CashPaymentRequest,
+    CheckoutResponse,
+    ConfirmCardPaymentRequest,
+)
 from app.schemas.sale import (
     AddFreeAmountRequest,
     AddProductRequest,
@@ -11,6 +17,17 @@ from app.schemas.sale import (
     ScanBarcodeRequest,
     ScanBarcodeResponse,
     ScanResultType,
+)
+from app.services.checkout import (
+    EmptySaleError,
+    InsufficientCashError,
+    PaymentNotConfirmableError,
+    PaymentNotFoundError,
+    SaleNotFoundError as CheckoutSaleNotFoundError,
+    SaleNotPayableError,
+    complete_cash_payment,
+    confirm_card_payment,
+    start_card_payment,
 )
 from app.services.sales import (
     InvalidFreeAmountError,
@@ -51,6 +68,28 @@ def _raise_sale_http_error(exc: Exception) -> None:
     if isinstance(exc, (InvalidFreeAmountError, InvalidSaleQuantityError)):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    raise exc
+
+
+def _raise_checkout_http_error(exc: Exception) -> None:
+    if isinstance(exc, (CheckoutSaleNotFoundError, PaymentNotFoundError)):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    if isinstance(exc, InsufficientCashError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    if isinstance(
+        exc,
+        (EmptySaleError, SaleNotPayableError, PaymentNotConfirmableError),
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
     raise exc
@@ -186,3 +225,83 @@ def remove_sale_item(
         SaleItemNotFoundError,
     ) as exc:
         _raise_sale_http_error(exc)
+
+
+@router.post(
+    "/{sale_id}/payments/cash",
+    response_model=CheckoutResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def pay_sale_with_cash(
+    sale_id: UUID,
+    payload: CashPaymentRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        sale, payment = complete_cash_payment(
+            db,
+            sale_id,
+            payload.cash_received_clp,
+        )
+        return CheckoutResponse(sale=sale, payment=payment)
+    except (
+        CheckoutSaleNotFoundError,
+        SaleNotPayableError,
+        EmptySaleError,
+        InsufficientCashError,
+    ) as exc:
+        _raise_checkout_http_error(exc)
+
+
+@router.post(
+    "/{sale_id}/payments/card",
+    response_model=CheckoutResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def begin_sale_card_payment(
+    sale_id: UUID,
+    payload: CardPaymentRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        sale, payment = start_card_payment(
+            db,
+            sale_id,
+            provider=payload.provider,
+            external_reference=payload.external_reference,
+        )
+        return CheckoutResponse(sale=sale, payment=payment)
+    except (
+        CheckoutSaleNotFoundError,
+        SaleNotPayableError,
+        EmptySaleError,
+    ) as exc:
+        _raise_checkout_http_error(exc)
+
+
+@router.post(
+    "/{sale_id}/payments/{payment_id}/confirm",
+    response_model=CheckoutResponse,
+)
+def approve_sale_card_payment(
+    sale_id: UUID,
+    payment_id: UUID,
+    payload: ConfirmCardPaymentRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        sale, payment = confirm_card_payment(
+            db,
+            sale_id,
+            payment_id,
+            provider=payload.provider,
+            external_reference=payload.external_reference,
+        )
+        return CheckoutResponse(sale=sale, payment=payment)
+    except (
+        CheckoutSaleNotFoundError,
+        SaleNotPayableError,
+        PaymentNotFoundError,
+        PaymentNotConfirmableError,
+    ) as exc:
+        _raise_checkout_http_error(exc)

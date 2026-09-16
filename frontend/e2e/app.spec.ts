@@ -1,10 +1,7 @@
 import { expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
-async function addFreeAmount(
-  page: Parameters<typeof test>[0] extends never ? never : any,
-  description: string,
-  amount: string,
-) {
+async function addFreeAmount(page: Page, description: string, amount: string) {
   await page.getByRole("button", { name: "AGREGAR MONTO" }).click();
   await page.getByLabel("Qué estás vendiendo").fill(description);
   await page.getByLabel("Monto").fill(amount);

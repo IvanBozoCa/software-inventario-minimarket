@@ -17,17 +17,17 @@ export default defineConfig({
   webServer: [
     {
       name: "Backend",
-      command: ".\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --port 8010",
+      command: ".\\.venv\\Scripts\\python.exe scripts\\run_e2e_server.py",
       cwd: "../backend",
       url: "http://127.0.0.1:8010/health",
-      reuseExistingServer: true,
+      reuseExistingServer: false,
       timeout: 30000,
     },
     {
       name: "Frontend",
-      command: "npm run dev -- --host 127.0.0.1",
+      command: "npx vite --host 127.0.0.1",
       url: "http://127.0.0.1:5173",
-      reuseExistingServer: true,
+      reuseExistingServer: false,
       timeout: 30000,
     },
   ],

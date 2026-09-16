@@ -46,6 +46,12 @@ input:disabled {
   margin: 0 auto 16px;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .eyebrow {
   display: block;
   margin-bottom: 2px;
@@ -63,6 +69,23 @@ input:disabled {
 
 .cashier-header h1 {
   font-size: clamp(2rem, 4vw, 3rem);
+}
+
+.admin-entry-button {
+  min-height: 48px;
+  padding: 0 16px;
+  border: 2px solid #d1d8d4;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #405149;
+  font-size: 0.88rem;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+}
+
+.admin-entry-button:hover:not(:disabled) {
+  border-color: #9cacA4;
+  background: #f8faf8;
 }
 
 .connection {
@@ -671,6 +694,146 @@ input:disabled {
   line-height: 1.45;
 }
 
+.admin-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(16, 24, 21, 0.78);
+  backdrop-filter: blur(4px);
+}
+
+.admin-lock-card {
+  width: min(520px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  padding: 30px;
+  border-radius: 26px;
+  background: #ffffff;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+  text-align: center;
+}
+
+.admin-kicker {
+  display: block;
+  margin-bottom: 8px;
+  color: #2f6b5f;
+  font-size: 0.85rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.admin-lock-card h2 {
+  margin: 0;
+  font-size: clamp(1.8rem, 5vw, 2.5rem);
+  line-height: 1.1;
+}
+
+.admin-help,
+.admin-unlocked p {
+  margin: 14px auto 20px;
+  max-width: 420px;
+  color: #53645c;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.pin-display {
+  min-height: 78px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 18px 0;
+  padding: 12px 18px;
+  border: 2px solid #d7ded9;
+  border-radius: 18px;
+  background: #f7f9f7;
+  color: #183d32;
+  font-size: clamp(1.8rem, 5vw, 2.7rem);
+  font-weight: 900;
+  letter-spacing: 0.22em;
+}
+
+.admin-error {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #fff0ee;
+  color: #8a302b;
+  font-weight: 800;
+}
+
+.numeric-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.numeric-keypad button {
+  min-height: 72px;
+  border: 2px solid #d4dcd7;
+  border-radius: 16px;
+  background: #ffffff;
+  color: #1e2f28;
+  font-size: 1.55rem;
+  font-weight: 900;
+  touch-action: manipulation;
+}
+
+.numeric-keypad button:active:not(:disabled) {
+  transform: translateY(1px);
+  background: #eef4f1;
+}
+
+.numeric-keypad .keypad-secondary {
+  color: #6a4e16;
+  font-size: 0.92rem;
+}
+
+.numeric-keypad .keypad-confirm {
+  border-color: #2f6b5f;
+  background: #2f6b5f;
+  color: #ffffff;
+  font-size: 0.9rem;
+}
+
+.admin-back-button,
+.admin-primary-button,
+.admin-lock-button {
+  width: 100%;
+  min-height: 62px;
+  border-radius: 15px;
+  font-weight: 900;
+}
+
+.admin-back-button {
+  margin-top: 16px;
+  border: 2px solid #cfd7d2;
+  background: #ffffff;
+  color: #35483f;
+}
+
+.admin-session-actions {
+  display: grid;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.admin-primary-button {
+  border: 0;
+  background: #2f6b5f;
+  color: #ffffff;
+}
+
+.admin-lock-button {
+  border: 2px solid #d8b7b3;
+  background: #fffafa;
+  color: #8a302b;
+}
+
 @media (max-width: 900px) {
   .cashier-shell {
     padding: 14px;
@@ -705,10 +868,16 @@ input:disabled {
     align-items: flex-start;
   }
 
+  .header-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .admin-entry-button,
   .connection {
     min-height: 42px;
     padding: 0 12px;
-    font-size: 0.9rem;
+    font-size: 0.82rem;
   }
 
   .quick-actions,
@@ -747,5 +916,18 @@ input:disabled {
 
   .recovery-summary {
     align-items: stretch;
+  }
+
+  .admin-overlay {
+    padding: 10px;
+  }
+
+  .admin-lock-card {
+    padding: 24px 18px;
+    border-radius: 20px;
+  }
+
+  .numeric-keypad button {
+    min-height: 66px;
   }
 }

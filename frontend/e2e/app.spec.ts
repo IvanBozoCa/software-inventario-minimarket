@@ -27,7 +27,7 @@ test("frontend y backend completan una venta en efectivo", async ({ page }) => {
   await expect(page.getByRole("button", { name: "COBRAR EN EFECTIVO" })).toBeEnabled();
   await page.getByRole("button", { name: "COBRAR EN EFECTIVO" }).click();
 
-  await expect(page.getByText("VENTA TERMINADA")).toBeVisible();
-  await expect(page.getByText("VUELTO")).toBeVisible();
+  await expect(page.getByText("VENTA TERMINADA", { exact: true })).toBeVisible();
+  await expect(page.getByText("VUELTO", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "NUEVA VENTA" })).toBeVisible();
 });

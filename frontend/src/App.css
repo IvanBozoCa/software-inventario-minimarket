@@ -226,14 +226,16 @@ input:disabled {
 }
 
 .scan-form,
-.free-amount-form {
+.free-amount-form,
+.cash-payment-form {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
 .scan-form label,
-.free-amount-form label {
+.free-amount-form label,
+.cash-payment-form label {
   font-size: 0.84rem;
   font-weight: 800;
   letter-spacing: 0.06em;
@@ -242,7 +244,8 @@ input:disabled {
 
 .scan-form input,
 .inline-form input,
-.free-amount-form input {
+.free-amount-form input,
+.cash-payment-form input {
   width: 100%;
   min-height: 58px;
   padding: 0 16px;
@@ -256,7 +259,8 @@ input:disabled {
 
 .scan-form input:focus,
 .inline-form input:focus,
-.free-amount-form input:focus {
+.free-amount-form input:focus,
+.cash-payment-form input:focus {
   border-color: #2f6b5f;
   box-shadow: 0 0 0 4px rgba(47, 107, 95, 0.12);
 }
@@ -350,6 +354,200 @@ input:disabled {
   flex-shrink: 0;
 }
 
+.checkout-section {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 2px solid #e4e9e6;
+}
+
+.checkout-label,
+.payment-kicker,
+.completion-label,
+.change-label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+
+.checkout-label,
+.payment-kicker {
+  margin-bottom: 10px;
+  color: #52625b;
+}
+
+.payment-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.cash-button,
+.card-button,
+.cash-confirm-button,
+.approve-card-button,
+.new-sale-button,
+.back-button,
+.cash-shortcuts button {
+  min-height: 60px;
+  border-radius: 14px;
+  font-weight: 900;
+}
+
+.cash-button,
+.card-button {
+  border: 0;
+  color: #ffffff;
+  font-size: 1.08rem;
+}
+
+.cash-button {
+  background: #2f6b5f;
+}
+
+.card-button {
+  background: #263b63;
+}
+
+.checkout-help {
+  display: block;
+  margin-top: 10px;
+  color: #718078;
+  font-size: 0.92rem;
+}
+
+.cash-payment-panel,
+.card-payment-panel,
+.completion-card {
+  min-height: 440px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.cash-payment-panel h2,
+.card-payment-panel h2 {
+  margin: 0 0 20px;
+  font-size: clamp(1.7rem, 3vw, 2.4rem);
+}
+
+.cash-payment-form input {
+  min-height: 72px;
+  font-size: 1.7rem;
+  font-weight: 850;
+  text-align: center;
+}
+
+.cash-shortcuts {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin: 4px 0;
+}
+
+.cash-shortcuts button {
+  border: 2px solid #ccd6d1;
+  background: #ffffff;
+  color: #22332c;
+}
+
+.change-preview {
+  min-height: 104px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 8px 0;
+  padding: 18px;
+  border-radius: 16px;
+  background: #e1f2eb;
+  color: #174e3d;
+}
+
+.change-preview.waiting {
+  background: #f1f2ef;
+  color: #68736e;
+}
+
+.change-preview span {
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.change-preview strong {
+  font-size: clamp(2rem, 4vw, 3rem);
+}
+
+.cash-confirm-button,
+.approve-card-button,
+.new-sale-button {
+  border: 0;
+  background: #2f6b5f;
+  color: #ffffff;
+  font-size: 1.08rem;
+}
+
+.back-button {
+  border: 2px solid #ced6d1;
+  background: #ffffff;
+  color: #33453d;
+}
+
+.card-payment-panel ol {
+  margin: 0 0 24px;
+  padding-left: 24px;
+  color: #495b53;
+  font-size: 1.04rem;
+  line-height: 1.6;
+}
+
+.approve-card-button {
+  min-height: 76px;
+  font-size: 1.2rem;
+}
+
+.payment-warning {
+  margin: 14px 0 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: #fff2d8;
+  color: #73530f;
+  font-weight: 700;
+}
+
+.completion-card {
+  align-items: stretch;
+  text-align: center;
+}
+
+.completion-label {
+  margin-bottom: 28px;
+  color: #26705a;
+}
+
+.change-label {
+  color: #55675f;
+}
+
+.change-amount {
+  display: block;
+  margin: 8px 0 34px;
+  font-size: clamp(3.4rem, 8vw, 6rem);
+  line-height: 1;
+  color: #163f34;
+}
+
+.card-approved {
+  display: block;
+  margin: 12px 0 42px;
+  font-size: clamp(2.5rem, 6vw, 4rem);
+  color: #235f4c;
+}
+
+.new-sale-button {
+  min-height: 74px;
+}
+
 @media (max-width: 900px) {
   .cashier-shell {
     padding: 14px;
@@ -367,6 +565,12 @@ input:disabled {
   .empty-sale {
     min-height: 260px;
   }
+
+  .cash-payment-panel,
+  .card-payment-panel,
+  .completion-card {
+    min-height: 340px;
+  }
 }
 
 @media (max-width: 560px) {
@@ -381,7 +585,9 @@ input:disabled {
   }
 
   .quick-actions,
-  .inline-form {
+  .inline-form,
+  .payment-actions,
+  .cash-shortcuts {
     grid-template-columns: 1fr;
   }
 
@@ -395,7 +601,8 @@ input:disabled {
     justify-content: space-between;
   }
 
-  .total-card {
+  .total-card,
+  .change-preview {
     align-items: flex-end;
     flex-direction: column;
   }

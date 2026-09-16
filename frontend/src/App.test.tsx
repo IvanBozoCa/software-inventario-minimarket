@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
@@ -34,6 +34,7 @@ const interruptedSale = {
 
 describe("App", () => {
   afterEach(() => {
+    cleanup();
     vi.unstubAllGlobals();
     localStorage.clear();
     sessionStorage.clear();

@@ -23,6 +23,6 @@ command.upgrade(alembic_config, "head")
 uvicorn.run(
     "app.main:app",
     host="127.0.0.1",
-    port=int(os.getenv("MINIMARKET_E2E_PORT", "8011")),
+    port=8010,
     log_level="info",
 )

@@ -521,7 +521,7 @@ input:disabled {
 }
 
 .completion-label {
-  margin-bottom: 28px;
+  margin-bottom: 24px;
   color: #26705a;
 }
 
@@ -539,9 +539,13 @@ input:disabled {
 
 .card-approved {
   display: block;
-  margin: 12px 0 42px;
-  font-size: clamp(2.5rem, 6vw, 4rem);
+  max-width: 100%;
+  margin: 8px 0 34px;
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1.15;
   color: #235f4c;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .new-sale-button {
@@ -605,5 +609,10 @@ input:disabled {
   .change-preview {
     align-items: flex-end;
     flex-direction: column;
+  }
+
+  .card-approved {
+    font-size: 2rem;
+    line-height: 1.2;
   }
 }

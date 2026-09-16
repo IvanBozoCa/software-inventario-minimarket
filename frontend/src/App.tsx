@@ -5,6 +5,7 @@ import "./App.css";
 const API_BASE = "http://127.0.0.1:8010";
 const ACTIVE_SALE_KEY = "minimarket.activeSaleId";
 const ACTIVE_PAYMENT_KEY = "minimarket.activePaymentId";
+const ADMIN_TOKEN_KEY = "minimarket.adminToken";
 
 type SaleItem = {
   id: string;
@@ -64,8 +65,25 @@ type RecoveryResponse = {
   message: string;
 };
 
+type AdminSecurityStatus = {
+  configured: boolean;
+  session_minutes: number;
+};
+
+type AdminUnlockResponse = {
+  token: string;
+  expires_at: string;
+  session_minutes: number;
+};
+
+type AdminSessionResponse = {
+  valid: boolean;
+  expires_at: string | null;
+};
+
 type CheckoutMode = "sale" | "cash" | "card" | "completed";
 type StartupMode = "checking" | "ready" | "recovery" | "conflict";
+type AdminMode = "closed" | "setup" | "setup-confirm" | "pin" | "unlocked";
 
 function formatClp(value: number) {
   return new Intl.NumberFormat("es-CL", {
@@ -114,6 +132,13 @@ function App() {
   const [cashReceived, setCashReceived] = useState("");
   const [pendingPaymentId, setPendingPaymentId] = useState<string | null>(null);
   const [completedPayment, setCompletedPayment] = useState<Payment | null>(null);
+  const [adminMode, setAdminMode] = useState<AdminMode>("closed");
+  const [adminPin, setAdminPin] = useState("");
+  const [adminFirstPin, setAdminFirstPin] = useState("");
+  const [adminError, setAdminError] = useState("");
+  const [adminToken, setAdminToken] = useState<string | null>(() =>
+    sessionStorage.getItem(ADMIN_TOKEN_KEY),
+  );
   const barcodeRef = useRef<HTMLInputElement>(null);
 
   async function requestDraft() {
@@ -201,6 +226,179 @@ function App() {
     Boolean(sale) &&
     receivedAmount >= (sale?.total_clp ?? 0);
   const previewChange = cashIsValid && sale ? receivedAmount - sale.total_clp : null;
+
+  function focusCashier() {
+    if (startupMode === "ready" && sale?.status === "DRAFT" && checkoutMode === "sale") {
+      window.setTimeout(() => barcodeRef.current?.focus(), 0);
+    }
+  }
+
+  function resetAdminPad() {
+    setAdminPin("");
+    setAdminFirstPin("");
+    setAdminError("");
+  }
+
+  function closeAdminView() {
+    setAdminMode("closed");
+    resetAdminPad();
+    setMessage("Caja lista");
+    focusCashier();
+  }
+
+  function clearAdminSession() {
+    sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+    setAdminToken(null);
+  }
+
+  async function openAdministration() {
+    if (busy || backendStatus !== "ok") return;
+
+    setBusy(true);
+    setAdminError("");
+    try {
+      const statusResponse = await fetch(`${API_BASE}/admin/security/status`);
+      if (!statusResponse.ok) {
+        throw new Error(await readError(statusResponse));
+      }
+      const security: AdminSecurityStatus = await statusResponse.json();
+
+      if (!security.configured) {
+        resetAdminPad();
+        setAdminMode("setup");
+        return;
+      }
+
+      if (adminToken) {
+        const sessionResponse = await fetch(`${API_BASE}/admin/security/session`, {
+          headers: { Authorization: `Bearer ${adminToken}` },
+        });
+        if (sessionResponse.ok) {
+          const session: AdminSessionResponse = await sessionResponse.json();
+          if (session.valid) {
+            setAdminMode("unlocked");
+            setMessage("Administración desbloqueada");
+            return;
+          }
+        }
+        clearAdminSession();
+      }
+
+      setAdminPin("");
+      setAdminError("");
+      setAdminMode("pin");
+    } catch {
+      setMessage("No se pudo abrir Administración");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function appendAdminDigit(digit: string) {
+    setAdminError("");
+    setAdminPin((current) => (current.length < 8 ? `${current}${digit}` : current));
+  }
+
+  function eraseAdminDigit() {
+    setAdminError("");
+    setAdminPin((current) => current.slice(0, -1));
+  }
+
+  async function unlockWithPin(pin: string) {
+    const response = await fetch(`${API_BASE}/admin/security/unlock`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pin }),
+    });
+    if (!response.ok) {
+      throw new Error(await readError(response));
+    }
+
+    const result: AdminUnlockResponse = await response.json();
+    sessionStorage.setItem(ADMIN_TOKEN_KEY, result.token);
+    setAdminToken(result.token);
+    setAdminPin("");
+    setAdminFirstPin("");
+    setAdminError("");
+    setAdminMode("unlocked");
+    setMessage("Administración desbloqueada");
+  }
+
+  async function confirmAdminPin() {
+    if (busy) return;
+    if (adminPin.length < 4) {
+      setAdminError("El PIN debe tener al menos 4 números");
+      return;
+    }
+
+    if (adminMode === "setup") {
+      setAdminFirstPin(adminPin);
+      setAdminPin("");
+      setAdminError("");
+      setAdminMode("setup-confirm");
+      return;
+    }
+
+    if (adminMode === "setup-confirm") {
+      if (adminPin !== adminFirstPin) {
+        setAdminPin("");
+        setAdminError("Los PIN no coinciden. Inténtalo nuevamente.");
+        return;
+      }
+
+      setBusy(true);
+      try {
+        const setupResponse = await fetch(`${API_BASE}/admin/security/setup`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pin: adminPin }),
+        });
+        if (!setupResponse.ok) {
+          throw new Error(await readError(setupResponse));
+        }
+        await unlockWithPin(adminPin);
+      } catch (error) {
+        setAdminError(
+          error instanceof Error ? error.message : "No se pudo configurar el PIN",
+        );
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    if (adminMode !== "pin") return;
+
+    setBusy(true);
+    try {
+      await unlockWithPin(adminPin);
+    } catch (error) {
+      setAdminPin("");
+      setAdminError(error instanceof Error ? error.message : "PIN incorrecto");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function lockAdministration() {
+    const token = adminToken;
+    clearAdminSession();
+    setAdminMode("closed");
+    resetAdminPad();
+    setMessage("Administración bloqueada. Caja lista.");
+    focusCashier();
+
+    if (!token) return;
+
+    try {
+      await fetch(`${API_BASE}/admin/security/lock`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch {
+      // El bloqueo local se conserva aunque el backend ya no esté disponible.
+    }
+  }
 
   function continueRecoveredSale() {
     if (!sale || startupMode !== "recovery") return;
@@ -535,6 +733,20 @@ function App() {
     }
   }
 
+  const adminTitle =
+    adminMode === "setup"
+      ? "Crea el PIN de administrador"
+      : adminMode === "setup-confirm"
+        ? "Repite el PIN para confirmar"
+        : "Ingresa el PIN de administrador";
+
+  const adminActionLabel =
+    adminMode === "setup"
+      ? "CONTINUAR"
+      : adminMode === "setup-confirm"
+        ? "CONFIRMAR PIN"
+        : "ENTRAR";
+
   return (
     <main className="cashier-shell">
       <header className="cashier-header">
@@ -542,15 +754,25 @@ function App() {
           <span className="eyebrow">CAJA</span>
           <h1>Venta</h1>
         </div>
-        <div
-          className={`connection ${backendStatus === "ok" ? "connected" : ""}`}
-          aria-live="polite"
-        >
-          {backendStatus === "checking"
-            ? "Conectando..."
-            : backendStatus === "ok"
-              ? "Sistema listo"
-              : "Sin conexión"}
+        <div className="header-actions">
+          <button
+            type="button"
+            className="admin-entry-button"
+            onClick={() => void openAdministration()}
+            disabled={busy || backendStatus !== "ok"}
+          >
+            ADMINISTRACIÓN
+          </button>
+          <div
+            className={`connection ${backendStatus === "ok" ? "connected" : ""}`}
+            aria-live="polite"
+          >
+            {backendStatus === "checking"
+              ? "Conectando..."
+              : backendStatus === "ok"
+                ? "Sistema listo"
+                : "Sin conexión"}
+          </div>
         </div>
       </header>
 
@@ -899,6 +1121,108 @@ function App() {
                     <span className="checkout-help">Agrega productos para cobrar.</span>
                   ) : null}
                 </div>
+              </>
+            )}
+          </section>
+        </div>
+      )}
+
+      {adminMode !== "closed" && (
+        <div className="admin-overlay" role="dialog" aria-modal="true" aria-label="Acceso administrador">
+          <section className="admin-lock-card">
+            {adminMode === "unlocked" ? (
+              <div className="admin-unlocked">
+                <span className="admin-kicker">ADMINISTRACIÓN</span>
+                <h2>Acceso autorizado</h2>
+                <p>
+                  La sesión administrativa queda disponible temporalmente. Las funciones de
+                  inventario, productos, compras y reportes se incorporarán en este espacio.
+                </p>
+                <div className="admin-session-actions">
+                  <button type="button" className="admin-primary-button" onClick={closeAdminView}>
+                    VOLVER A CAJA
+                  </button>
+                  <button
+                    type="button"
+                    className="admin-lock-button"
+                    onClick={() => void lockAdministration()}
+                  >
+                    BLOQUEAR ADMINISTRACIÓN
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <span className="admin-kicker">
+                  {adminMode === "setup" || adminMode === "setup-confirm"
+                    ? "PRIMERA CONFIGURACIÓN"
+                    : "ACCESO ADMINISTRADOR"}
+                </span>
+                <h2>{adminTitle}</h2>
+                <p className="admin-help">
+                  {adminMode === "setup"
+                    ? "Elige entre 4 y 8 números. Este PIN protegerá las funciones sensibles."
+                    : adminMode === "setup-confirm"
+                      ? "Vuelve a marcar los mismos números para evitar errores."
+                      : "Usa el teclado de la pantalla. Caja seguirá disponible al volver."}
+                </p>
+
+                <div className="pin-display" aria-label={`${adminPin.length} números ingresados`}>
+                  {adminPin.length > 0 ? "● ".repeat(adminPin.length).trim() : "○ ○ ○ ○"}
+                </div>
+
+                {adminError && (
+                  <p className="admin-error" role="alert">
+                    {adminError}
+                  </p>
+                )}
+
+                <div className="numeric-keypad" aria-label="Teclado numérico">
+                  {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((digit) => (
+                    <button
+                      type="button"
+                      key={digit}
+                      aria-label={`Número ${digit}`}
+                      onClick={() => appendAdminDigit(digit)}
+                      disabled={busy}
+                    >
+                      {digit}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="keypad-secondary"
+                    onClick={eraseAdminDigit}
+                    disabled={busy || adminPin.length === 0}
+                  >
+                    BORRAR
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Número 0"
+                    onClick={() => appendAdminDigit("0")}
+                    disabled={busy}
+                  >
+                    0
+                  </button>
+                  <button
+                    type="button"
+                    className="keypad-confirm"
+                    onClick={() => void confirmAdminPin()}
+                    disabled={busy || adminPin.length < 4}
+                  >
+                    {adminActionLabel}
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  className="admin-back-button"
+                  onClick={closeAdminView}
+                  disabled={busy}
+                >
+                  VOLVER A CAJA
+                </button>
               </>
             )}
           </section>

@@ -49,7 +49,7 @@ describe("App", () => {
       await screen.findByRole("heading", { level: 1, name: "Venta" }),
     ).toBeInTheDocument();
     expect(await screen.findByText("Sistema listo")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "AGREGAR", exact: true })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /^AGREGAR$/ })).toBeEnabled();
     expect(screen.getByRole("button", { name: "BUSCAR PRODUCTO" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "AGREGAR MONTO" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "EFECTIVO" })).toBeDisabled();

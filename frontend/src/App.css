@@ -31,6 +31,12 @@ input:disabled {
   padding: 24px;
 }
 
+.cashier-shell h1,
+.cashier-shell h2,
+.cashier-shell h3 {
+  color: #18201d;
+}
+
 .cashier-header {
   display: flex;
   align-items: center;

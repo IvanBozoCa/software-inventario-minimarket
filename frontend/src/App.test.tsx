@@ -179,7 +179,9 @@ describe("App", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<App />);
 
-    const adminButton = await screen.findByRole("button", { name: "ADMINISTRACIÓN" });
+    await screen.findByText("Sistema listo");
+    const adminButton = screen.getByRole("button", { name: "ADMINISTRACIÓN" });
+    expect(adminButton).toBeEnabled();
     fireEvent.click(adminButton);
 
     expect(

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
@@ -36,6 +36,7 @@ describe("App", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     localStorage.clear();
+    sessionStorage.clear();
   });
 
   it("inicia una venta borrador cuando no hay ventas pendientes", async () => {
@@ -80,6 +81,7 @@ describe("App", () => {
       await screen.findByRole("heading", { level: 1, name: "Venta" }),
     ).toBeInTheDocument();
     expect(await screen.findByText("Sistema listo")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ADMINISTRACIÓN" })).toBeEnabled();
     expect(screen.getByRole("button", { name: /^AGREGAR$/ })).toBeEnabled();
     expect(screen.getByRole("button", { name: "BUSCAR PRODUCTO" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "AGREGAR MONTO" })).toBeEnabled();
@@ -126,5 +128,71 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "CONTINUAR VENTA" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "DESCARTAR VENTA" })).toBeEnabled();
     expect(localStorage.getItem("minimarket.activeSaleId")).toBeNull();
+  });
+
+  it("desbloquea administración usando sólo el teclado numérico táctil", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (input, init) => {
+      const url = String(input);
+
+      if (url.endsWith("/health")) {
+        return { ok: true, json: async () => ({ status: "ok" }) };
+      }
+
+      if (url.endsWith("/sales/recovery")) {
+        return {
+          ok: true,
+          json: async () => ({
+            state: "NONE",
+            sale: null,
+            pending_payment_id: null,
+            open_sale_count: 0,
+            message: "No hay ventas pendientes de recuperación",
+          }),
+        };
+      }
+
+      if (url.endsWith("/sales/draft") && init?.method === "POST") {
+        return { ok: true, json: async () => emptyDraft };
+      }
+
+      if (url.endsWith("/admin/security/status")) {
+        return {
+          ok: true,
+          json: async () => ({ configured: true, session_minutes: 15 }),
+        };
+      }
+
+      if (url.endsWith("/admin/security/unlock") && init?.method === "POST") {
+        return {
+          ok: true,
+          json: async () => ({
+            token: "token-prueba",
+            expires_at: "2026-09-16T03:30:00Z",
+            session_minutes: 15,
+          }),
+        };
+      }
+
+      throw new Error(`Solicitud inesperada: ${url}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    const adminButton = await screen.findByRole("button", { name: "ADMINISTRACIÓN" });
+    fireEvent.click(adminButton);
+
+    expect(
+      await screen.findByRole("heading", { name: "Ingresa el PIN de administrador" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Número 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Número 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Número 3" }));
+    fireEvent.click(screen.getByRole("button", { name: "Número 4" }));
+    fireEvent.click(screen.getByRole("button", { name: "ENTRAR" }));
+
+    expect(await screen.findByText("Acceso autorizado")).toBeInTheDocument();
+    expect(sessionStorage.getItem("minimarket.adminToken")).toBe("token-prueba");
   });
 });

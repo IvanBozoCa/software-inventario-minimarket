@@ -13,7 +13,9 @@ from app.schemas.payment import (
 from app.schemas.sale import (
     AddFreeAmountRequest,
     AddProductRequest,
+    RecoveryState,
     SaleRead,
+    SaleRecoveryResponse,
     ScanBarcodeRequest,
     ScanBarcodeResponse,
     ScanResultType,
@@ -28,6 +30,14 @@ from app.services.checkout import (
     complete_cash_payment,
     confirm_card_payment,
     start_card_payment,
+)
+from app.services.recovery import (
+    RecoveryConflictError,
+    SaleNotFoundError as RecoverySaleNotFoundError,
+    SaleNotRecoverableError,
+    discard_recoverable_sale,
+    get_pending_card_payment,
+    list_recoverable_sales,
 )
 from app.services.sales import (
     InvalidFreeAmountError,
@@ -95,6 +105,20 @@ def _raise_checkout_http_error(exc: Exception) -> None:
     raise exc
 
 
+def _raise_recovery_http_error(exc: Exception) -> None:
+    if isinstance(exc, RecoverySaleNotFoundError):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    if isinstance(exc, (SaleNotRecoverableError, RecoveryConflictError)):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    raise exc
+
+
 @router.post(
     "/draft",
     response_model=SaleRead,
@@ -102,6 +126,63 @@ def _raise_checkout_http_error(exc: Exception) -> None:
 )
 def create_sale_draft(db: Session = Depends(get_db)):
     return create_draft_sale(db)
+
+
+@router.get("/recovery", response_model=SaleRecoveryResponse)
+def inspect_sale_recovery(db: Session = Depends(get_db)):
+    recoverable_sales = list_recoverable_sales(db)
+
+    if not recoverable_sales:
+        return SaleRecoveryResponse(
+            state=RecoveryState.NONE,
+            sale=None,
+            pending_payment_id=None,
+            open_sale_count=0,
+            message="No hay ventas pendientes de recuperación",
+        )
+
+    if len(recoverable_sales) > 1:
+        return SaleRecoveryResponse(
+            state=RecoveryState.CONFLICT,
+            sale=None,
+            pending_payment_id=None,
+            open_sale_count=len(recoverable_sales),
+            message="Hay más de una venta pendiente. Se necesita revisión administrativa.",
+        )
+
+    sale = recoverable_sales[0]
+    pending_payment_id = None
+
+    if sale.status.value == "PAYMENT_PENDING":
+        try:
+            payment = get_pending_card_payment(db, sale.id)
+        except RecoveryConflictError:
+            return SaleRecoveryResponse(
+                state=RecoveryState.CONFLICT,
+                sale=None,
+                pending_payment_id=None,
+                open_sale_count=1,
+                message="La venta pendiente tiene una inconsistencia de pago y necesita revisión administrativa.",
+            )
+
+        if payment is None:
+            return SaleRecoveryResponse(
+                state=RecoveryState.CONFLICT,
+                sale=None,
+                pending_payment_id=None,
+                open_sale_count=1,
+                message="La venta espera un pago con tarjeta que no pudo recuperarse.",
+            )
+
+        pending_payment_id = payment.id
+
+    return SaleRecoveryResponse(
+        state=RecoveryState.FOUND,
+        sale=sale,
+        pending_payment_id=pending_payment_id,
+        open_sale_count=1,
+        message="Hay una venta pendiente. Puedes continuarla o descartarla.",
+    )
 
 
 @router.get("/{sale_id}", response_model=SaleRead)
@@ -113,6 +194,21 @@ def read_sale(
         return get_sale(db, sale_id)
     except SaleNotFoundError as exc:
         _raise_sale_http_error(exc)
+
+
+@router.post("/{sale_id}/discard", response_model=SaleRead)
+def discard_interrupted_sale(
+    sale_id: UUID,
+    db: Session = Depends(get_db),
+):
+    try:
+        return discard_recoverable_sale(db, sale_id)
+    except (
+        RecoverySaleNotFoundError,
+        SaleNotRecoverableError,
+        RecoveryConflictError,
+    ) as exc:
+        _raise_recovery_http_error(exc)
 
 
 @router.post("/{sale_id}/scan", response_model=ScanBarcodeResponse)

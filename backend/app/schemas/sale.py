@@ -14,6 +14,12 @@ class ScanResultType(str, PythonEnum):
     MANUAL_PRICE_REQUIRED = "MANUAL_PRICE_REQUIRED"
 
 
+class RecoveryState(str, PythonEnum):
+    NONE = "NONE"
+    FOUND = "FOUND"
+    CONFLICT = "CONFLICT"
+
+
 class SaleItemRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -38,6 +44,14 @@ class SaleRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     items: list[SaleItemRead]
+
+
+class SaleRecoveryResponse(BaseModel):
+    state: RecoveryState
+    sale: SaleRead | None = None
+    pending_payment_id: UUID | None = None
+    open_sale_count: int = 0
+    message: str
 
 
 class ScanBarcodeRequest(BaseModel):

@@ -56,7 +56,16 @@ type ScanResponse = {
   sale: Sale;
 };
 
+type RecoveryResponse = {
+  state: "NONE" | "FOUND" | "CONFLICT";
+  sale: Sale | null;
+  pending_payment_id: string | null;
+  open_sale_count: number;
+  message: string;
+};
+
 type CheckoutMode = "sale" | "cash" | "card" | "completed";
+type StartupMode = "checking" | "ready" | "recovery" | "conflict";
 
 function formatClp(value: number) {
   return new Intl.NumberFormat("es-CL", {
@@ -89,6 +98,8 @@ function App() {
   const [backendStatus, setBackendStatus] = useState<"checking" | "ok" | "offline">(
     "checking",
   );
+  const [startupMode, setStartupMode] = useState<StartupMode>("checking");
+  const [recoveryMessage, setRecoveryMessage] = useState("");
   const [sale, setSale] = useState<Sale | null>(null);
   const [barcode, setBarcode] = useState("");
   const [message, setMessage] = useState("Listo para vender");
@@ -129,42 +140,45 @@ function App() {
         if (cancelled) return;
         setBackendStatus("ok");
 
-        const storedSaleId = localStorage.getItem(ACTIVE_SALE_KEY);
-        const storedPaymentId = localStorage.getItem(ACTIVE_PAYMENT_KEY);
-        let activeSale: Sale | null = null;
-
-        if (storedSaleId) {
-          const saved = await fetch(`${API_BASE}/sales/${storedSaleId}`);
-          if (saved.ok) {
-            const candidate: Sale = await saved.json();
-            if (candidate.status === "DRAFT" || candidate.status === "PAYMENT_PENDING") {
-              activeSale = candidate;
-            }
-          }
+        const recoveryResponse = await fetch(`${API_BASE}/sales/recovery`);
+        if (!recoveryResponse.ok) {
+          throw new Error(await readError(recoveryResponse));
         }
 
-        if (!activeSale) {
-          activeSale = await requestDraft();
+        const recovery: RecoveryResponse = await recoveryResponse.json();
+        if (cancelled) return;
+
+        if (recovery.state === "CONFLICT") {
+          localStorage.removeItem(ACTIVE_SALE_KEY);
+          localStorage.removeItem(ACTIVE_PAYMENT_KEY);
+          setSale(null);
+          setPendingPaymentId(null);
+          setRecoveryMessage(recovery.message);
+          setStartupMode("conflict");
+          setMessage("Se necesita revisión antes de vender");
+          return;
         }
 
+        if (recovery.state === "FOUND" && recovery.sale) {
+          setSale(recovery.sale);
+          setPendingPaymentId(recovery.pending_payment_id);
+          setRecoveryMessage(recovery.message);
+          setStartupMode("recovery");
+          setMessage("Hay una venta sin terminar");
+          return;
+        }
+
+        const draft = await requestDraft();
         if (!cancelled) {
-          setSale(activeSale);
-          if (activeSale.status === "PAYMENT_PENDING") {
-            setPendingPaymentId(storedPaymentId);
-            setCheckoutMode("card");
-            setMessage(
-              storedPaymentId
-                ? "Cobro con tarjeta pendiente de confirmación"
-                : "Hay un cobro con tarjeta pendiente que necesita recuperación",
-            );
-          } else {
-            setMessage("Venta en curso");
-            window.setTimeout(() => barcodeRef.current?.focus(), 0);
-          }
+          setSale(draft);
+          setStartupMode("ready");
+          setMessage("Venta en curso");
+          window.setTimeout(() => barcodeRef.current?.focus(), 0);
         }
       } catch {
         if (!cancelled) {
           setBackendStatus("offline");
+          setStartupMode("checking");
           setMessage("Sin conexión con el sistema local");
         }
       }
@@ -177,11 +191,76 @@ function App() {
     };
   }, []);
 
-  const canEditSale = Boolean(sale && sale.status === "DRAFT" && !busy);
+  const canEditSale = Boolean(
+    startupMode === "ready" && sale && sale.status === "DRAFT" && !busy,
+  );
   const canCheckout = Boolean(canEditSale && sale && sale.total_clp > 0);
   const receivedAmount = Number(cashReceived);
-  const cashIsValid = Number.isInteger(receivedAmount) && Boolean(sale) && receivedAmount >= (sale?.total_clp ?? 0);
+  const cashIsValid =
+    Number.isInteger(receivedAmount) &&
+    Boolean(sale) &&
+    receivedAmount >= (sale?.total_clp ?? 0);
   const previewChange = cashIsValid && sale ? receivedAmount - sale.total_clp : null;
+
+  function continueRecoveredSale() {
+    if (!sale || startupMode !== "recovery") return;
+
+    localStorage.setItem(ACTIVE_SALE_KEY, sale.id);
+    if (sale.status === "PAYMENT_PENDING") {
+      if (pendingPaymentId) {
+        localStorage.setItem(ACTIVE_PAYMENT_KEY, pendingPaymentId);
+      }
+      setCheckoutMode("card");
+      setMessage("Cobro con tarjeta pendiente de confirmación");
+    } else {
+      localStorage.removeItem(ACTIVE_PAYMENT_KEY);
+      setCheckoutMode("sale");
+      setMessage("Venta recuperada");
+    }
+
+    setStartupMode("ready");
+    setRecoveryMessage("");
+
+    if (sale.status === "DRAFT") {
+      window.setTimeout(() => barcodeRef.current?.focus(), 0);
+    }
+  }
+
+  async function discardRecoveredSale() {
+    if (!sale || startupMode !== "recovery" || busy) return;
+
+    setBusy(true);
+    try {
+      const response = await fetch(`${API_BASE}/sales/${sale.id}/discard`, {
+        method: "POST",
+      });
+      if (!response.ok) {
+        throw new Error(await readError(response));
+      }
+
+      localStorage.removeItem(ACTIVE_SALE_KEY);
+      localStorage.removeItem(ACTIVE_PAYMENT_KEY);
+
+      const draft = await requestDraft();
+      setSale(draft);
+      setPendingPaymentId(null);
+      setCompletedPayment(null);
+      setCheckoutMode("sale");
+      setCashReceived("");
+      setShowSearch(false);
+      setShowFreeAmount(false);
+      setRecoveryMessage("");
+      setStartupMode("ready");
+      setMessage("Venta descartada. Nueva venta lista.");
+      window.setTimeout(() => barcodeRef.current?.focus(), 0);
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "No se pudo descartar la venta",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function scanProduct(event: FormEvent) {
     event.preventDefault();
@@ -392,7 +471,9 @@ function App() {
       setCheckoutMode("card");
       setMessage("Cobra el total en la máquina y confirma cuando diga APROBADO");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "No se pudo iniciar el cobro con tarjeta");
+      setMessage(
+        error instanceof Error ? error.message : "No se pudo iniciar el cobro con tarjeta",
+      );
     } finally {
       setBusy(false);
     }
@@ -477,282 +558,352 @@ function App() {
         {message}
       </section>
 
-      <div className="cashier-grid">
-        <section className="sale-panel" aria-label="Venta en curso">
-          <div className="panel-heading">
-            <h2>Venta en curso</h2>
-            <span>{sale?.items.length ?? 0} productos</span>
-          </div>
-
-          <div className="sale-items">
-            {!sale || sale.items.length === 0 ? (
-              <div className="empty-sale">
-                <strong>Aún no hay productos</strong>
-                <span>Escanea el primer producto para comenzar.</span>
-              </div>
-            ) : (
-              sale.items.map((item) => (
-                <article className="sale-item" key={item.id}>
-                  <div>
-                    <strong>{item.description_snapshot}</strong>
-                    <span>
-                      {Number(item.quantity).toLocaleString("es-CL")} × {formatClp(item.unit_price_clp)}
-                    </span>
-                  </div>
-                  <div className="sale-item-total">
-                    <strong>{formatClp(item.line_total_clp)}</strong>
-                    <button
-                      type="button"
-                      className="remove-button"
-                      onClick={() => void removeItem(item.id)}
-                      disabled={!canEditSale}
-                    >
-                      Quitar
-                    </button>
-                  </div>
-                </article>
-              ))
-            )}
-          </div>
-
-          <div className="total-card">
-            <span>TOTAL</span>
-            <strong>{formatClp(sale?.total_clp ?? 0)}</strong>
+      {startupMode === "checking" ? (
+        <section className="recovery-shell" aria-live="polite">
+          <div className="recovery-card">
+            <span className="recovery-kicker">INICIANDO CAJA</span>
+            <h2>Revisando ventas pendientes…</h2>
+            <p>El sistema está comprobando que no haya una venta sin terminar.</p>
           </div>
         </section>
+      ) : startupMode === "conflict" ? (
+        <section className="recovery-shell" aria-live="polite">
+          <div className="recovery-card recovery-conflict">
+            <span className="recovery-kicker">REVISIÓN NECESARIA</span>
+            <h2>Hay más de una venta pendiente</h2>
+            <p>{recoveryMessage}</p>
+            <strong className="recovery-stop-message">
+              No inicies otra venta. Pide ayuda al administrador.
+            </strong>
+          </div>
+        </section>
+      ) : startupMode === "recovery" && sale ? (
+        <section className="recovery-shell" aria-live="polite">
+          <div className="recovery-card">
+            <span className="recovery-kicker">VENTA SIN TERMINAR</span>
+            <h2>¿Qué quieres hacer con esta venta?</h2>
+            <p>{recoveryMessage}</p>
 
-        <section className="action-panel" aria-label="Acciones de caja">
-          {checkoutMode === "completed" && completedPayment ? (
-            <div className="completion-card" aria-live="polite">
-              <span className="completion-label">VENTA TERMINADA</span>
-              {completedPayment.method === "CASH" ? (
-                <>
-                  <span className="change-label">VUELTO</span>
-                  <strong className="change-amount">
-                    {formatClp(completedPayment.change_clp ?? 0)}
-                  </strong>
-                </>
-              ) : (
-                <strong className="card-approved">PAGO APROBADO</strong>
-              )}
+            <div className="recovery-summary">
+              <span>
+                {sale.status === "PAYMENT_PENDING"
+                  ? "Cobro con tarjeta pendiente"
+                  : `${sale.items.length} productos`}
+              </span>
+              <strong>{formatClp(sale.total_clp)}</strong>
+            </div>
+
+            {sale.status === "PAYMENT_PENDING" && (
+              <p className="recovery-warning">
+                Si la máquina de tarjeta alcanzó a aprobar el pago, elige CONTINUAR VENTA.
+              </p>
+            )}
+
+            <div className="recovery-actions">
               <button
                 type="button"
-                className="new-sale-button"
-                onClick={() => void startNewSale()}
+                className="continue-sale-button"
+                onClick={continueRecoveredSale}
                 disabled={busy}
               >
-                NUEVA VENTA
+                CONTINUAR VENTA
               </button>
-            </div>
-          ) : checkoutMode === "card" && sale?.status === "PAYMENT_PENDING" ? (
-            <div className="card-payment-panel">
-              <span className="payment-kicker">TARJETA</span>
-              <h2>Cobra {formatClp(sale.total_clp)}</h2>
-              <ol>
-                <li>Ingresa este monto en la máquina de tarjeta.</li>
-                <li>Espera a que la máquina indique que el pago fue aprobado.</li>
-                <li>Recién entonces confirma aquí.</li>
-              </ol>
               <button
                 type="button"
-                className="approve-card-button"
-                onClick={() => void confirmCardPayment()}
-                disabled={busy || !pendingPaymentId}
+                className="discard-sale-button"
+                onClick={() => void discardRecoveredSale()}
+                disabled={busy}
               >
-                PAGO APROBADO
+                DESCARTAR VENTA
               </button>
-              {!pendingPaymentId && (
-                <p className="payment-warning">
-                  Falta la referencia del pago pendiente. No inicies otra venta.
-                </p>
-              )}
             </div>
-          ) : checkoutMode === "cash" && sale?.status === "DRAFT" ? (
-            <div className="cash-payment-panel">
-              <span className="payment-kicker">EFECTIVO</span>
-              <h2>Total {formatClp(sale.total_clp)}</h2>
-              <form onSubmit={completeCash} className="cash-payment-form">
-                <label htmlFor="cash-received">¿Cuánto recibiste?</label>
-                <input
-                  id="cash-received"
-                  type="number"
-                  min={sale.total_clp}
-                  step="1"
-                  inputMode="numeric"
-                  value={cashReceived}
-                  onChange={(event) => setCashReceived(event.target.value)}
-                  autoFocus
-                />
-
-                <div className="cash-shortcuts" aria-label="Montos rápidos">
-                  {cashSuggestions(sale.total_clp).map((amount) => (
-                    <button
-                      type="button"
-                      key={amount}
-                      onClick={() => setCashReceived(String(amount))}
-                    >
-                      {amount === sale.total_clp ? "EXACTO" : formatClp(amount)}
-                    </button>
-                  ))}
-                </div>
-
-                <div className={`change-preview ${previewChange === null ? "waiting" : ""}`}>
-                  <span>VUELTO</span>
-                  <strong>
-                    {previewChange === null ? "—" : formatClp(previewChange)}
-                  </strong>
-                </div>
-
-                <button
-                  type="submit"
-                  className="cash-confirm-button"
-                  disabled={busy || !cashIsValid}
-                >
-                  COBRAR EN EFECTIVO
-                </button>
-                <button
-                  type="button"
-                  className="back-button"
-                  onClick={() => {
-                    setCheckoutMode("sale");
-                    setMessage("Venta en curso");
-                    window.setTimeout(() => barcodeRef.current?.focus(), 0);
-                  }}
-                  disabled={busy}
-                >
-                  VOLVER
-                </button>
-              </form>
+          </div>
+        </section>
+      ) : (
+        <div className="cashier-grid">
+          <section className="sale-panel" aria-label="Venta en curso">
+            <div className="panel-heading">
+              <h2>Venta en curso</h2>
+              <span>{sale?.items.length ?? 0} productos</span>
             </div>
-          ) : (
-            <>
-              <form className="scan-form" onSubmit={scanProduct}>
-                <label htmlFor="barcode">ESCANEAR PRODUCTO</label>
-                <input
-                  ref={barcodeRef}
-                  id="barcode"
-                  value={barcode}
-                  onChange={(event) => setBarcode(event.target.value)}
-                  placeholder="Escanea o escribe el código"
-                  autoComplete="off"
-                  disabled={!canEditSale}
-                />
-                <button className="primary-button" type="submit" disabled={!canEditSale}>
-                  AGREGAR
-                </button>
-              </form>
 
-              <div className="quick-actions">
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => setShowSearch((value) => !value)}
-                  disabled={!canEditSale}
-                >
-                  BUSCAR PRODUCTO
-                </button>
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => setShowFreeAmount((value) => !value)}
-                  disabled={!canEditSale}
-                >
-                  AGREGAR MONTO
-                </button>
-              </div>
-
-              {showSearch && (
-                <div className="action-card">
-                  <h3>Buscar producto</h3>
-                  <form onSubmit={searchProducts} className="inline-form">
-                    <input
-                      value={searchTerm}
-                      onChange={(event) => setSearchTerm(event.target.value)}
-                      placeholder="Nombre del producto"
-                      autoFocus
-                    />
-                    <button type="submit" disabled={busy}>
-                      Buscar
-                    </button>
-                  </form>
-                  <div className="search-results">
-                    {searchResults.map((product) => (
+            <div className="sale-items">
+              {!sale || sale.items.length === 0 ? (
+                <div className="empty-sale">
+                  <strong>Aún no hay productos</strong>
+                  <span>Escanea el primer producto para comenzar.</span>
+                </div>
+              ) : (
+                sale.items.map((item) => (
+                  <article className="sale-item" key={item.id}>
+                    <div>
+                      <strong>{item.description_snapshot}</strong>
+                      <span>
+                        {Number(item.quantity).toLocaleString("es-CL")} ×{" "}
+                        {formatClp(item.unit_price_clp)}
+                      </span>
+                    </div>
+                    <div className="sale-item-total">
+                      <strong>{formatClp(item.line_total_clp)}</strong>
                       <button
                         type="button"
-                        className="product-result"
-                        key={product.id}
-                        onClick={() => void addSelectedProduct(product)}
-                        disabled={busy}
+                        className="remove-button"
+                        onClick={() => void removeItem(item.id)}
+                        disabled={!canEditSale}
                       >
-                        <span>{product.name}</span>
-                        <strong>
-                          {product.sale_price_clp === null
-                            ? "Ingresar monto"
-                            : formatClp(product.sale_price_clp)}
-                        </strong>
+                        Quitar
+                      </button>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+
+            <div className="total-card">
+              <span>TOTAL</span>
+              <strong>{formatClp(sale?.total_clp ?? 0)}</strong>
+            </div>
+          </section>
+
+          <section className="action-panel" aria-label="Acciones de caja">
+            {checkoutMode === "completed" && completedPayment ? (
+              <div className="completion-card" aria-live="polite">
+                <span className="completion-label">VENTA TERMINADA</span>
+                {completedPayment.method === "CASH" ? (
+                  <>
+                    <span className="change-label">VUELTO</span>
+                    <strong className="change-amount">
+                      {formatClp(completedPayment.change_clp ?? 0)}
+                    </strong>
+                  </>
+                ) : (
+                  <strong className="card-approved">PAGO APROBADO</strong>
+                )}
+                <button
+                  type="button"
+                  className="new-sale-button"
+                  onClick={() => void startNewSale()}
+                  disabled={busy}
+                >
+                  NUEVA VENTA
+                </button>
+              </div>
+            ) : checkoutMode === "card" && sale?.status === "PAYMENT_PENDING" ? (
+              <div className="card-payment-panel">
+                <span className="payment-kicker">TARJETA</span>
+                <h2>Cobra {formatClp(sale.total_clp)}</h2>
+                <ol>
+                  <li>Ingresa este monto en la máquina de tarjeta.</li>
+                  <li>Espera a que la máquina indique que el pago fue aprobado.</li>
+                  <li>Recién entonces confirma aquí.</li>
+                </ol>
+                <button
+                  type="button"
+                  className="approve-card-button"
+                  onClick={() => void confirmCardPayment()}
+                  disabled={busy || !pendingPaymentId}
+                >
+                  PAGO APROBADO
+                </button>
+                {!pendingPaymentId && (
+                  <p className="payment-warning">
+                    Falta la referencia del pago pendiente. No inicies otra venta.
+                  </p>
+                )}
+              </div>
+            ) : checkoutMode === "cash" && sale?.status === "DRAFT" ? (
+              <div className="cash-payment-panel">
+                <span className="payment-kicker">EFECTIVO</span>
+                <h2>Total {formatClp(sale.total_clp)}</h2>
+                <form onSubmit={completeCash} className="cash-payment-form">
+                  <label htmlFor="cash-received">¿Cuánto recibiste?</label>
+                  <input
+                    id="cash-received"
+                    type="number"
+                    min={sale.total_clp}
+                    step="1"
+                    inputMode="numeric"
+                    value={cashReceived}
+                    onChange={(event) => setCashReceived(event.target.value)}
+                    autoFocus
+                  />
+
+                  <div className="cash-shortcuts" aria-label="Montos rápidos">
+                    {cashSuggestions(sale.total_clp).map((amount) => (
+                      <button
+                        type="button"
+                        key={amount}
+                        onClick={() => setCashReceived(String(amount))}
+                      >
+                        {amount === sale.total_clp ? "EXACTO" : formatClp(amount)}
                       </button>
                     ))}
                   </div>
-                </div>
-              )}
 
-              {showFreeAmount && (
-                <div className="action-card">
-                  <h3>Agregar monto</h3>
-                  <form onSubmit={addFreeAmount} className="free-amount-form">
-                    <label htmlFor="free-description">Qué estás vendiendo</label>
-                    <input
-                      id="free-description"
-                      value={freeDescription}
-                      onChange={(event) => setFreeDescription(event.target.value)}
-                      maxLength={200}
-                    />
-                    <label htmlFor="free-amount">Monto</label>
-                    <input
-                      id="free-amount"
-                      type="number"
-                      min="1"
-                      step="1"
-                      inputMode="numeric"
-                      value={freeAmount}
-                      onChange={(event) => setFreeAmount(event.target.value)}
-                      placeholder="$"
-                    />
-                    <button className="primary-button" type="submit" disabled={busy}>
-                      AGREGAR MONTO
-                    </button>
-                  </form>
-                </div>
-              )}
-
-              <div className="checkout-section">
-                <span className="checkout-label">COBRAR</span>
-                <div className="payment-actions">
-                  <button
-                    type="button"
-                    className="cash-button"
-                    onClick={openCashPayment}
-                    disabled={!canCheckout}
+                  <div
+                    className={`change-preview ${previewChange === null ? "waiting" : ""}`}
                   >
-                    EFECTIVO
+                    <span>VUELTO</span>
+                    <strong>
+                      {previewChange === null ? "—" : formatClp(previewChange)}
+                    </strong>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="cash-confirm-button"
+                    disabled={busy || !cashIsValid}
+                  >
+                    COBRAR EN EFECTIVO
                   </button>
                   <button
                     type="button"
-                    className="card-button"
-                    onClick={() => void startCardPayment()}
-                    disabled={!canCheckout}
+                    className="back-button"
+                    onClick={() => {
+                      setCheckoutMode("sale");
+                      setMessage("Venta en curso");
+                      window.setTimeout(() => barcodeRef.current?.focus(), 0);
+                    }}
+                    disabled={busy}
                   >
-                    TARJETA
+                    VOLVER
                   </button>
-                </div>
-                {!sale || sale.total_clp === 0 ? (
-                  <span className="checkout-help">Agrega productos para cobrar.</span>
-                ) : null}
+                </form>
               </div>
-            </>
-          )}
-        </section>
-      </div>
+            ) : (
+              <>
+                <form className="scan-form" onSubmit={scanProduct}>
+                  <label htmlFor="barcode">ESCANEAR PRODUCTO</label>
+                  <input
+                    ref={barcodeRef}
+                    id="barcode"
+                    value={barcode}
+                    onChange={(event) => setBarcode(event.target.value)}
+                    placeholder="Escanea o escribe el código"
+                    autoComplete="off"
+                    disabled={!canEditSale}
+                  />
+                  <button
+                    className="primary-button"
+                    type="submit"
+                    disabled={!canEditSale}
+                  >
+                    AGREGAR
+                  </button>
+                </form>
+
+                <div className="quick-actions">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => setShowSearch((value) => !value)}
+                    disabled={!canEditSale}
+                  >
+                    BUSCAR PRODUCTO
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => setShowFreeAmount((value) => !value)}
+                    disabled={!canEditSale}
+                  >
+                    AGREGAR MONTO
+                  </button>
+                </div>
+
+                {showSearch && (
+                  <div className="action-card">
+                    <h3>Buscar producto</h3>
+                    <form onSubmit={searchProducts} className="inline-form">
+                      <input
+                        value={searchTerm}
+                        onChange={(event) => setSearchTerm(event.target.value)}
+                        placeholder="Nombre del producto"
+                        autoFocus
+                      />
+                      <button type="submit" disabled={busy}>
+                        Buscar
+                      </button>
+                    </form>
+                    <div className="search-results">
+                      {searchResults.map((product) => (
+                        <button
+                          type="button"
+                          className="product-result"
+                          key={product.id}
+                          onClick={() => void addSelectedProduct(product)}
+                          disabled={busy}
+                        >
+                          <span>{product.name}</span>
+                          <strong>
+                            {product.sale_price_clp === null
+                              ? "Ingresar monto"
+                              : formatClp(product.sale_price_clp)}
+                          </strong>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {showFreeAmount && (
+                  <div className="action-card">
+                    <h3>Agregar monto</h3>
+                    <form onSubmit={addFreeAmount} className="free-amount-form">
+                      <label htmlFor="free-description">Qué estás vendiendo</label>
+                      <input
+                        id="free-description"
+                        value={freeDescription}
+                        onChange={(event) => setFreeDescription(event.target.value)}
+                        maxLength={200}
+                      />
+                      <label htmlFor="free-amount">Monto</label>
+                      <input
+                        id="free-amount"
+                        type="number"
+                        min="1"
+                        step="1"
+                        inputMode="numeric"
+                        value={freeAmount}
+                        onChange={(event) => setFreeAmount(event.target.value)}
+                        placeholder="$"
+                      />
+                      <button className="primary-button" type="submit" disabled={busy}>
+                        AGREGAR MONTO
+                      </button>
+                    </form>
+                  </div>
+                )}
+
+                <div className="checkout-section">
+                  <span className="checkout-label">COBRAR</span>
+                  <div className="payment-actions">
+                    <button
+                      type="button"
+                      className="cash-button"
+                      onClick={openCashPayment}
+                      disabled={!canCheckout}
+                    >
+                      EFECTIVO
+                    </button>
+                    <button
+                      type="button"
+                      className="card-button"
+                      onClick={() => void startCardPayment()}
+                      disabled={!canCheckout}
+                    >
+                      TARJETA
+                    </button>
+                  </div>
+                  {!sale || sale.total_clp === 0 ? (
+                    <span className="checkout-help">Agrega productos para cobrar.</span>
+                  ) : null}
+                </div>
+              </>
+            )}
+          </section>
+        </div>
+      )}
     </main>
   );
 }

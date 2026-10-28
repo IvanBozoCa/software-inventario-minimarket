@@ -40,6 +40,17 @@
 - El PIN no se exige en la interfaz: hay un único usuario administrador en un
   equipo local y ya no existe un modo Caja compartido que proteger.
 
+## Publicación en Internet (28-10-2026, tarde)
+
+- La base puede ser Postgres (Supabase) en un esquema propio (`SIM_DB_SCHEMA`)
+  sin tocar los modelos: `Base.metadata` toma el esquema de la variable y
+  Alembic fija `search_path` al migrar. SQLite sigue siendo el valor por
+  defecto para el uso local.
+- Acceso con contraseña única y token firmado sin estado
+  (`services/access.py`), porque Vercel ejecuta varias instancias y el PIN
+  anterior guardaba las sesiones en memoria.
+- Detalle en `despliegue.md`.
+
 ## Lo que no se hizo a propósito
 
 - Sin redondeo de precios ni "precios psicológicos".

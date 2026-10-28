@@ -215,11 +215,41 @@ async function readError(response: Response): Promise<string> {
   return "No fue posible completar la acción";
 }
 
+// Token de acceso para la instalación publicada en Internet. En el equipo
+// local el backend no exige contraseña y el token queda vacío.
+const TOKEN_KEY = "sim.accessToken";
+export const UNAUTHORIZED_EVENT = "sim:unauthorized";
+
+export function getAccessToken(): string | null {
+  try {
+    return window.localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setAccessToken(token: string | null): void {
+  try {
+    if (token) window.localStorage.setItem(TOKEN_KEY, token);
+    else window.localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // almacenamiento no disponible (modo privado): la sesión dura la pestaña
+  }
+}
+
+function authHeaders(): Record<string, string> {
+  const token = getAccessToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    headers: { "Content-Type": "application/json", ...authHeaders(), ...(init?.headers ?? {}) },
   });
+  if (response.status === 401 && path !== "/auth/login") {
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  }
   if (!response.ok) {
     throw new Error(await readError(response));
   }
@@ -229,8 +259,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 const json = (body: unknown) => JSON.stringify(body);
 
+export type AccessStatus = { required: boolean; authenticated: boolean; expires_at: string | null };
+
 export const api = {
   health: () => request<{ status: string }>("/health"),
+  accessStatus: () => request<AccessStatus>("/auth/status"),
+  login: (password: string) =>
+    request<{ token: string; expires_at: string; session_hours: number }>("/auth/login", {
+      method: "POST",
+      body: json({ password }),
+    }),
 
   categories: (includeInactive = false) =>
     request<Category[]>(`/categories?include_inactive=${includeInactive}`),

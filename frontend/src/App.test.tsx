@@ -209,7 +209,7 @@ describe("App", () => {
 
   it("muestra el inventario con indicadores de costo pendiente", async () => {
     mockApi({
-      "GET /health": () => jsonResponse({ status: "ok" }),
+      "GET /auth/status": () => jsonResponse({ required: false, authenticated: true, expires_at: null }),
       "GET /categories": () => jsonResponse([]),
       "GET /products/overview": () => jsonResponse([overviewRow]),
     });
@@ -220,19 +220,54 @@ describe("App", () => {
     expect(screen.getByText("Costo pendiente")).toBeInTheDocument();
     expect(screen.getByText("Sin referencias")).toBeInTheDocument();
     expect(screen.getByText(/2\.200/)).toBeInTheDocument();
-    expect(screen.getByText("Sistema local conectado")).toBeInTheDocument();
+    expect(screen.getByText("Conectado")).toBeInTheDocument();
   });
 
   it("avisa cuando el sistema local no responde", async () => {
     vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("offline"))));
     render(<App />);
-    expect(await screen.findByText("No se pudo conectar con el sistema local")).toBeInTheDocument();
+    expect(await screen.findByText("No se pudo conectar con el servidor de SIM")).toBeInTheDocument();
+  });
+
+  it("pide la contraseña cuando la instalación está protegida y guarda el token", async () => {
+    window.localStorage.removeItem("sim.accessToken");
+    const calls = mockApi({
+      "GET /auth/status": () =>
+        jsonResponse({ required: true, authenticated: false, expires_at: null }),
+      "POST /auth/login": (init) =>
+        JSON.parse(String(init?.body)).password === "clave-segura"
+          ? jsonResponse({ token: "tok-123", expires_at: "2026-10-29T00:00:00Z", session_hours: 12 })
+          : jsonResponse({ detail: "Contraseña incorrecta" }, 401),
+      "GET /categories": () => jsonResponse([]),
+      "GET /products/overview": () => jsonResponse([overviewRow]),
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText("Acceso al administrador")).toBeInTheDocument();
+    expect(screen.queryByText("Inventario")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "mala" } });
+    fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
+    expect(await screen.findByText("Contraseña incorrecta")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "clave-segura" } });
+    fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
+
+    expect(await screen.findByText("Bebida cola")).toBeInTheDocument();
+    expect(window.localStorage.getItem("sim.accessToken")).toBe("tok-123");
+    const overviewCall = calls.find((call) => call.path === "GET /products/overview");
+    expect((overviewCall?.init?.headers as Record<string, string>).Authorization).toBe("Bearer tok-123");
+
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar sesión" }));
+    expect(await screen.findByText("Acceso al administrador")).toBeInTheDocument();
+    expect(window.localStorage.getItem("sim.accessToken")).toBeNull();
   });
 
   it("muestra la ficha con rango de precios, referencias y permite cambiar el precio", async () => {
     window.location.hash = `#/productos/${PRODUCT_ID}`;
     const calls = mockApi({
-      "GET /health": () => jsonResponse({ status: "ok" }),
+      "GET /auth/status": () => jsonResponse({ required: false, authenticated: true, expires_at: null }),
       [`GET /products/${PRODUCT_ID}/detail`]: () => jsonResponse(detail),
       [`PUT /products/${PRODUCT_ID}/price`]: () => jsonResponse({ ...detail.product, sale_price_clp: 2400 }),
     });
@@ -264,7 +299,7 @@ describe("App", () => {
   it("crea un producto desde el formulario con los datos mínimos", async () => {
     window.location.hash = "#/productos/nuevo";
     const calls = mockApi({
-      "GET /health": () => jsonResponse({ status: "ok" }),
+      "GET /auth/status": () => jsonResponse({ required: false, authenticated: true, expires_at: null }),
       "GET /categories": () => jsonResponse([]),
       "POST /products": () => jsonResponse({ ...detail.product, id: "nuevo" }, 201),
       "GET /products/nuevo/detail": () => jsonResponse(detail),
@@ -294,7 +329,7 @@ describe("App", () => {
   it("valida los márgenes de una categoría antes de enviarlos", async () => {
     window.location.hash = "#/categorias";
     const calls = mockApi({
-      "GET /health": () => jsonResponse({ status: "ok" }),
+      "GET /auth/status": () => jsonResponse({ required: false, authenticated: true, expires_at: null }),
       "GET /categories": () => jsonResponse([]),
       "POST /categories": () =>
         jsonResponse({ id: "c1", name: "Bebidas", active: true, min_margin: "0.2000", upper_margin: "0.3500" }, 201),

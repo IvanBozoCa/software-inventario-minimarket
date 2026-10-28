@@ -64,10 +64,17 @@ npm run dev    # http://127.0.0.1:5173
 Si el backend corre en otra dirección, define `VITE_API_BASE` (por defecto
 `http://127.0.0.1:8010`).
 
+### Publicación en Internet (opcional)
+
+SIM puede publicarse en Vercel con Postgres de Supabase y acceso con
+contraseña única (`SIM_ACCESS_PASSWORD`). Variables, migraciones y pasos en
+[`docs/despliegue.md`](docs/despliegue.md). En el equipo local nada cambia:
+sin contraseña y con SQLite.
+
 ## Pruebas
 
 ```bash
-# Backend (90 pruebas): modelos, cálculos de rentabilidad, historial, referencias
+# Backend (94 pruebas): modelos, cálculos de rentabilidad, historial, referencias, acceso
 cd backend && .venv/bin/python -m pytest        # Windows: .venv\Scripts\python -m pytest
 
 # Frontend unitarias (Vitest)
@@ -144,8 +151,9 @@ que no se pudieron usar, está en `docs/referencias-mercado.md`.
 - Las referencias de mercado se actualizan manualmente (formulario o CSV).
 - No hay referencias de negocios físicos de Pichilemu precargadas: deben
   registrarse al observarlas.
-- La aplicación es para un solo administrador en un equipo local; no hay
-  usuarios, roles ni sincronización en la nube.
+- La aplicación es para un solo administrador; no hay usuarios ni roles. La
+  versión publicada en Internet se protege con una contraseña única y no se
+  sincroniza con una instalación local.
 - El PIN administrativo de la etapa anterior sigue disponible en la API
   (`/admin/security`), pero la interfaz actual no lo exige porque ya no existe
   un modo Caja compartido.

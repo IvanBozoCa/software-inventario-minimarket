@@ -9,6 +9,13 @@ DATABASE_URL = os.getenv(
     "sqlite:///./minimarket.db",
 )
 
+# Supabase entrega cadenas `postgresql://` o `postgres://`; SQLAlchemy necesita
+# el controlador explícito (psycopg 3).
+for _prefix in ("postgresql://", "postgres://"):
+    if DATABASE_URL.startswith(_prefix):
+        DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL[len(_prefix):]
+        break
+
 # Esquema de Postgres donde viven las tablas de SIM cuando la base se comparte
 # con otros productos (por ejemplo, Supabase). Vacío en SQLite y en local.
 DATABASE_SCHEMA = os.getenv("SIM_DB_SCHEMA") or None
@@ -21,7 +28,7 @@ if IS_SQLITE:
 else:
     # Supabase en modo "transaction pooler" no admite sentencias preparadas
     # con nombre; psycopg las desactiva con prepare_threshold=None.
-    connect_args = {"prepare_threshold": None} if "psycopg" in DATABASE_URL else {}
+    connect_args = {"prepare_threshold": None}
     engine_kwargs = {"pool_pre_ping": True, "pool_recycle": 300}
 
 engine = create_engine(

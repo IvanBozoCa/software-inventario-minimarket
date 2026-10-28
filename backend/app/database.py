@@ -1,7 +1,7 @@
 from collections.abc import Generator
 import os
 
-from sqlalchemy import create_engine
+from sqlalchemy import MetaData, create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 DATABASE_URL = os.getenv(
@@ -9,15 +9,32 @@ DATABASE_URL = os.getenv(
     "sqlite:///./minimarket.db",
 )
 
-connect_args = (
-    {"check_same_thread": False}
-    if DATABASE_URL.startswith("sqlite")
-    else {}
-)
+# Supabase entrega cadenas `postgresql://` o `postgres://`; SQLAlchemy necesita
+# el controlador explícito (psycopg 3).
+for _prefix in ("postgresql://", "postgres://"):
+    if DATABASE_URL.startswith(_prefix):
+        DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL[len(_prefix):]
+        break
+
+# Esquema de Postgres donde viven las tablas de SIM cuando la base se comparte
+# con otros productos (por ejemplo, Supabase). Vacío en SQLite y en local.
+DATABASE_SCHEMA = os.getenv("SIM_DB_SCHEMA") or None
+
+IS_SQLITE = DATABASE_URL.startswith("sqlite")
+
+if IS_SQLITE:
+    connect_args: dict[str, object] = {"check_same_thread": False}
+    engine_kwargs: dict[str, object] = {}
+else:
+    # Supabase en modo "transaction pooler" no admite sentencias preparadas
+    # con nombre; psycopg las desactiva con prepare_threshold=None.
+    connect_args = {"prepare_threshold": None}
+    engine_kwargs = {"pool_pre_ping": True, "pool_recycle": 300}
 
 engine = create_engine(
     DATABASE_URL,
     connect_args=connect_args,
+    **engine_kwargs,
 )
 
 SessionLocal = sessionmaker(
@@ -28,7 +45,7 @@ SessionLocal = sessionmaker(
 
 
 class Base(DeclarativeBase):
-    pass
+    metadata = MetaData(schema=DATABASE_SCHEMA)
 
 
 def get_db() -> Generator[Session, None, None]:

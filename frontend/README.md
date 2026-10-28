@@ -1,4 +1,7 @@
-# React + TypeScript + Vite
+# Frontend de SIM (React + TypeScript + Vite)
+
+Ver el README principal del repositorio para uso y pruebas. Lo que sigue es la
+plantilla original de Vite.
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 

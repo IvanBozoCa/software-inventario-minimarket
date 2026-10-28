@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.category import Category
 from app.schemas.category import CategoryCreate, CategoryRead, CategoryUpdate
+from app.services.pricing import InvalidMarginError, validate_margin_pair
 
 router = APIRouter(prefix="/categories", tags=["categories"])
 
@@ -47,7 +48,7 @@ def create_category(
             detail="Ya existe una categoría con ese nombre",
         )
 
-    category = Category(name=payload.name)
+    category = Category(**payload.model_dump())
     db.add(category)
 
     try:
@@ -102,6 +103,17 @@ def update_category(
             status_code=status.HTTP_409_CONFLICT,
             detail="Ya existe una categoría con ese nombre",
         )
+
+    try:
+        validate_margin_pair(
+            changes.get("min_margin", category.min_margin),
+            changes.get("upper_margin", category.upper_margin),
+        )
+    except InvalidMarginError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
 
     for field, value in changes.items():
         setattr(category, field, value)

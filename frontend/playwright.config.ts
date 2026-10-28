@@ -17,17 +17,22 @@ export default defineConfig({
   webServer: [
     {
       name: "Backend",
-      command: ".\\.venv\\Scripts\\python.exe scripts\\run_e2e_server.py",
+      // En Windows: .\.venv\Scripts\python.exe; en Linux/macOS: .venv/bin/python
+      command:
+        process.env.E2E_BACKEND_COMMAND ??
+        (process.platform === "win32"
+          ? ".\\.venv\\Scripts\\python.exe scripts\\run_e2e_server.py"
+          : ".venv/bin/python scripts/run_e2e_server.py"),
       cwd: "../backend",
       url: "http://127.0.0.1:8010/health",
-      reuseExistingServer: false,
+      reuseExistingServer: Boolean(process.env.E2E_REUSE_SERVERS),
       timeout: 30000,
     },
     {
       name: "Frontend",
       command: "npx vite --host 127.0.0.1",
       url: "http://127.0.0.1:5173",
-      reuseExistingServer: false,
+      reuseExistingServer: Boolean(process.env.E2E_REUSE_SERVERS),
       timeout: 30000,
     },
   ],

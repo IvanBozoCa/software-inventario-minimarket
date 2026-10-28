@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from decimal import Decimal
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, String, Uuid
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Numeric, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -20,6 +21,14 @@ class Category(Base):
             "length(trim(name)) > 0",
             name="ck_categories_name_not_blank",
         ),
+        CheckConstraint(
+            "min_margin IS NULL OR (min_margin >= 0 AND min_margin < 1)",
+            name="ck_categories_min_margin_range",
+        ),
+        CheckConstraint(
+            "upper_margin IS NULL OR (upper_margin >= 0 AND upper_margin < 1)",
+            name="ck_categories_upper_margin_range",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -33,6 +42,10 @@ class Category(Base):
         unique=True,
         index=True,
     )
+    # Márgenes configurados por el administrador (proporción 0..1 sobre el
+    # precio de venta). Sin valores predeterminados.
+    min_margin: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
+    upper_margin: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
     active: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,

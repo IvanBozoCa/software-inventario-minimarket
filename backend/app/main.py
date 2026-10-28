@@ -4,11 +4,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routers.admin_security import router as admin_security_router
 from app.routers.categories import router as categories_router
 from app.routers.inventory import router as inventory_router
+from app.routers.market import router as market_router
 from app.routers.products import router as products_router
 from app.routers.sales import router as sales_router
 
 app = FastAPI(
-    title="Software Inventario Minimarket",
+    title="SIM — Inventario y Gestión de Precios",
     version="0.1.0",
 )
 
@@ -26,6 +27,7 @@ app.add_middleware(
 app.include_router(categories_router)
 app.include_router(products_router)
 app.include_router(inventory_router)
+app.include_router(market_router)
 app.include_router(sales_router)
 app.include_router(admin_security_router)
 

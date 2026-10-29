@@ -3,7 +3,9 @@ import { api } from "../api";
 import type { Category, OverviewRow } from "../api";
 import { Alert } from "../components/Alert";
 import { formatClp, formatContent, formatPercent, formatQuantity } from "../format";
-import { hashQuery, replaceHashQuery } from "../router";
+import BarcodeScanner from "../components/BarcodeScanner";
+import { hashQuery, navigate, replaceHashQuery } from "../router";
+import { findProductByCode } from "../scanner";
 
 type Filter = "all" | "review" | "cost" | "market";
 type SortKey = "name" | "price" | "margin" | "status";
@@ -58,6 +60,9 @@ export default function InventoryPage() {
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [hasCategories, setHasCategories] = useState(true);
+  const [scanning, setScanning] = useState(false);
+  const [lookup, setLookup] = useState("");
+  const [scanError, setScanError] = useState("");
 
   useEffect(() => {
     api
@@ -126,6 +131,24 @@ export default function InventoryPage() {
     );
   }
 
+  // Al escanear: si el producto ya existe se abre su ficha; si no, se crea con
+  // el código ya completado.
+  async function openScanned(code: string) {
+    setScanning(false);
+    setLookup(`Buscando el código ${code}…`);
+    setScanError("");
+    try {
+      const product = await findProductByCode(code);
+      navigate(
+        product ? `/productos/${product.id}` : `/productos/nuevo?codigo=${encodeURIComponent(code)}`,
+      );
+    } catch (err) {
+      setScanError((err as Error).message);
+    } finally {
+      setLookup("");
+    }
+  }
+
   const counts = {
     review: rows.filter((r) => r.needs_review).length,
     cost: rows.filter((r) => r.cost_pending).length,
@@ -139,10 +162,25 @@ export default function InventoryPage() {
           <h2>Inventario</h2>
           <p className="page-intro">Productos del minimarket con su cantidad, precio actual y estado de la información.</p>
         </div>
-        <a className="button primary" href="#/productos/nuevo">
-          Nuevo producto
-        </a>
+        <div className="actions" style={{ marginTop: 0 }}>
+          <button type="button" onClick={() => setScanning(true)} disabled={Boolean(lookup)}>
+            Escanear código
+          </button>
+          <a className="button primary" href="#/productos/nuevo">
+            Nuevo producto
+          </a>
+        </div>
       </div>
+
+      {scanning && (
+        <BarcodeScanner
+          title="Escanear producto"
+          onDetected={openScanned}
+          onClose={() => setScanning(false)}
+        />
+      )}
+      {lookup && <Alert kind="info">{lookup}</Alert>}
+      {scanError && <Alert kind="danger">No se pudo buscar el código. {scanError}</Alert>}
 
       <div className="toolbar">
         <input

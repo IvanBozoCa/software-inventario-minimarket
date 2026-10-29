@@ -242,7 +242,9 @@ function App() {
         {(access === "ok" || hasEntered) && (
           <div hidden={access !== "ok"}>
             {route.page === "inventory" && <InventoryPage />}
-            {route.page === "product-new" && <ProductFormPage />}
+            {route.page === "product-new" && (
+              <ProductFormPage key={route.barcode ?? ""} initialBarcode={route.barcode} />
+            )}
             {route.page === "product-edit" && <ProductFormPage key={route.id} productId={route.id} />}
             {route.page === "product" && <ProductDetailPage key={route.id} productId={route.id} />}
             {route.page === "categories" && <CategoriesPage />}

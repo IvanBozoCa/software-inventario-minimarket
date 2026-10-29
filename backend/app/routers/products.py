@@ -237,6 +237,29 @@ def products_overview(
     return rows
 
 
+@router.get("/by-barcode", response_model=ProductRead)
+def get_product_by_barcode(
+    code: str,
+    db: Session = Depends(get_db),
+) -> Product:
+    """Busca un producto (activo o no) por su código de barras o QR exacto."""
+    term = code.strip()
+    if not term:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Indica el código a buscar.",
+        )
+    product = db.scalars(
+        select(Product).where(Product.barcode == term).order_by(Product.active.desc())
+    ).first()
+    if product is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No hay ningún producto con ese código.",
+        )
+    return product
+
+
 @router.get("/{product_id}", response_model=ProductRead)
 def get_product(
     product_id: UUID,

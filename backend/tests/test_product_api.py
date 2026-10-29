@@ -167,3 +167,37 @@ def test_unknown_product_returns_404(client: TestClient):
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Producto no encontrado"
+
+
+def test_get_product_by_barcode(client: TestClient):
+    created = client.post(
+        "/products",
+        json={"name": "Leche entera 1L", "barcode": "7802920000015", "sale_price_clp": 1290},
+    ).json()
+
+    response = client.get("/products/by-barcode", params={"code": " 7802920000015 "})
+    assert response.status_code == 200
+    assert response.json()["id"] == created["id"]
+
+    client.patch(f"/products/{created['id']}", json={"active": False})
+    response = client.get("/products/by-barcode", params={"code": "7802920000015"})
+    assert response.status_code == 200
+    assert response.json()["active"] is False
+
+    missing = client.get("/products/by-barcode", params={"code": "0000000000000"})
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "No hay ningún producto con ese código."
+
+    blank = client.get("/products/by-barcode", params={"code": "   "})
+    assert blank.status_code == 422
+
+
+def test_overview_search_matches_exact_barcode(client: TestClient):
+    client.post(
+        "/products",
+        json={"name": "Galletas de chocolate", "barcode": "7801234567890", "sale_price_clp": 990},
+    )
+    client.post("/products", json={"name": "Arroz grado 1", "sale_price_clp": 1500})
+
+    rows = client.get("/products/overview", params={"search": "7801234567890"}).json()
+    assert [row["name"] for row in rows] == ["Galletas de chocolate"]

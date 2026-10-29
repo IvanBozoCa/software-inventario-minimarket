@@ -225,6 +225,55 @@ describe("App", () => {
     expect(screen.getByText("Conectado")).toBeInTheDocument();
   });
 
+  it("pone precio y corrige la cantidad directo desde el inventario", async () => {
+    const OTHER_ID = "22222222-2222-2222-2222-222222222222";
+    const calls = mockApi({
+      "GET /auth/status": () => jsonResponse({ required: false, authenticated: true, expires_at: null }),
+      "GET /categories": () => jsonResponse([]),
+      "GET /products/overview": () =>
+        jsonResponse([
+          { ...overviewRow, sale_price_clp: null },
+          { ...overviewRow, id: OTHER_ID, name: "Bebida limón", sale_price_clp: null },
+        ]),
+      [`PUT /products/${PRODUCT_ID}/price`]: () => jsonResponse({ ...detail.product, sale_price_clp: 1990 }),
+      [`PUT /products/${PRODUCT_ID}/stock`]: () => jsonResponse(null),
+    });
+
+    render(<App />);
+
+    await screen.findByText("2 productos no tienen precio de venta.");
+    fireEvent.click(screen.getByRole("button", { name: "Ponerles precio" }));
+    expect(screen.getByRole("button", { name: "Sin precio (2)" })).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Poner precio a Bebida cola" }));
+    fireEvent.change(screen.getByLabelText("Precio de venta de Bebida cola"), { target: { value: "1.990" } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+    await waitFor(() =>
+      expect(calls.some((call) => call.path === `PUT /products/${PRODUCT_ID}/price`)).toBe(true),
+    );
+    const priceCall = calls.find((call) => call.path === `PUT /products/${PRODUCT_ID}/price`);
+    expect(JSON.parse(String(priceCall?.init?.body)).sale_price_clp).toBe(1990);
+    // Se abre el siguiente producto sin precio para seguir de corrido.
+    expect(await screen.findByLabelText("Precio de venta de Bebida limón")).toHaveFocus();
+    fireEvent.keyDown(screen.getByLabelText("Precio de venta de Bebida limón"), { key: "Escape" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Todos (2)" }));
+    fireEvent.click(screen.getAllByRole("button", { name: /Cambiar cantidad de Bebida cola/ })[0]);
+    const quantity = screen.getByLabelText("Cantidad de Bebida cola (unidades)");
+    expect(quantity).toHaveValue("24");
+    fireEvent.change(quantity, { target: { value: "1,5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    expect(await screen.findByText(/va sin decimales/)).toBeInTheDocument();
+    fireEvent.change(quantity, { target: { value: "30" } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() =>
+      expect(calls.some((call) => call.path === `PUT /products/${PRODUCT_ID}/stock`)).toBe(true),
+    );
+    const stockCall = calls.find((call) => call.path === `PUT /products/${PRODUCT_ID}/stock`);
+    expect(JSON.parse(String(stockCall?.init?.body)).quantity).toBe("30");
+  });
+
   it("avisa cuando el sistema local no responde", async () => {
     vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("offline"))));
     render(<App />);

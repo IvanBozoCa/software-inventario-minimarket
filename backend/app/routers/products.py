@@ -39,6 +39,7 @@ from app.services.catalog import (
 )
 from app.services.inventory import get_expected_stock
 from app.services.market import (
+    fold_text,
     get_stale_days,
     product_references,
     reference_counts_by_product,
@@ -177,16 +178,20 @@ def products_overview(
         statement = statement.where(Product.active.is_(True))
     if category_id is not None:
         statement = statement.where(Product.category_id == category_id)
-    if search is not None and search.strip():
-        term = search.strip()
-        statement = statement.where(
-            or_(
-                Product.name.ilike(f"%{term}%"),
-                Product.brand.ilike(f"%{term}%"),
-                Product.variant.ilike(f"%{term}%"),
-            )
-        )
     products = list(db.scalars(statement.order_by(Product.name)).all())
+    if search is not None and search.strip():
+        # Se filtra en Python para ignorar tildes y mayúsculas en SQLite y en
+        # Postgres por igual ("triton" encuentra "Tritón"). El inventario de un
+        # minimarket es pequeño, así que no compensa depender de unaccent.
+        term = fold_text(search)
+        products = [
+            product
+            for product in products
+            if term in fold_text(
+                " ".join(filter(None, [product.name, product.brand, product.variant]))
+            )
+            or (product.barcode is not None and search.strip() in product.barcode)
+        ]
     ids = [product.id for product in products]
 
     categories = {category.id: category for category in db.scalars(select(Category)).all()}

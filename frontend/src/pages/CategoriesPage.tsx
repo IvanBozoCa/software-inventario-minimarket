@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../api";
 import type { Category } from "../api";
-import { formatPercent, percentInputToRatio, ratioToPercentInput } from "../format";
+import { Alert } from "../components/Alert";
+import { useAutoClear } from "../useAutoClear";
+import { formatPercent, parseLocaleNumber, percentInputToRatio, ratioToPercentInput } from "../format";
 
 type Draft = { name: string; min_margin: string; upper_margin: string };
 
@@ -12,7 +14,13 @@ export default function CategoriesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<Draft>({ name: "", min_margin: "", upper_margin: "" });
   const [error, setError] = useState("");
+  // Error de la fila en edición: se muestra junto a la fila, no arriba.
+  const [rowError, setRowError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const clearNotice = useCallback(() => setNotice(""), []);
+  useAutoClear(notice, clearNotice);
 
   async function reload() {
     try {
@@ -33,7 +41,9 @@ export default function CategoriesPage() {
     if (!value.name.trim()) return "El nombre es obligatorio.";
     const min = percentInputToRatio(value.min_margin);
     const upper = percentInputToRatio(value.upper_margin);
-    if ((value.min_margin.trim() && min === null) || (value.upper_margin.trim() && upper === null)) {
+    if (value.name.trim().length > 120) return "El nombre puede tener como máximo 120 caracteres.";
+    const unreadable = (text: string) => text.trim() !== "" && parseLocaleNumber(text) === undefined;
+    if (unreadable(value.min_margin) || unreadable(value.upper_margin) || (value.min_margin.trim() && min === null) || (value.upper_margin.trim() && upper === null)) {
       return "Los márgenes deben ser números (por ejemplo 25 para 25 %).";
     }
     for (const ratio of [min, upper]) {
@@ -63,6 +73,7 @@ export default function CategoriesPage() {
         upper_margin: percentInputToRatio(draft.upper_margin),
       });
       setDraft({ name: "", min_margin: "", upper_margin: "" });
+      setNotice(`Categoría «${draft.name.trim()}» creada.`);
       await reload();
     } catch (err) {
       setError((err as Error).message);
@@ -79,12 +90,18 @@ export default function CategoriesPage() {
       upper_margin: ratioToPercentInput(category.upper_margin),
     });
     setError("");
+    setRowError("");
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setRowError("");
   }
 
   async function saveEdit(category: Category) {
     const problem = validate(editDraft);
     if (problem) {
-      setError(problem);
+      setRowError(problem);
       return;
     }
     setBusy(true);
@@ -95,10 +112,11 @@ export default function CategoriesPage() {
         upper_margin: percentInputToRatio(editDraft.upper_margin),
       });
       setEditingId(null);
-      setError("");
+      setRowError("");
+      setNotice("Cambios guardados.");
       await reload();
     } catch (err) {
-      setError((err as Error).message);
+      setRowError((err as Error).message);
     } finally {
       setBusy(false);
     }
@@ -106,8 +124,10 @@ export default function CategoriesPage() {
 
   async function toggleActive(category: Category) {
     setBusy(true);
+    setConfirmingId(null);
     try {
       await api.updateCategory(category.id, { active: !category.active });
+      setNotice(category.active ? `Categoría «${category.name}» desactivada.` : `Categoría «${category.name}» reactivada.`);
       await reload();
     } catch (err) {
       setError((err as Error).message);
@@ -121,14 +141,15 @@ export default function CategoriesPage() {
       <div className="page-header">
         <div>
           <h2>Categorías y márgenes</h2>
-          <p>
+          <p className="page-intro">
             Cada categoría define el margen mínimo objetivo y el margen superior de referencia (sobre el
             precio de venta). No hay valores predeterminados: defínelos según tu negocio.
           </p>
         </div>
       </div>
 
-      {error && <div className="alert danger">{error}</div>}
+      {error && <Alert kind="danger">{error}</Alert>}
+      {notice && <Alert kind="ok">{notice}</Alert>}
 
       <form className="card" onSubmit={create}>
         <h3>Nueva categoría</h3>
@@ -155,7 +176,7 @@ export default function CategoriesPage() {
         {categories.length === 0 ? (
           <p className="empty">Todavía no hay categorías.</p>
         ) : (
-          <table>
+          <table className="cards">
             <thead>
               <tr>
                 <th>Categoría</th>
@@ -183,18 +204,23 @@ export default function CategoriesPage() {
                       <button type="button" className="primary" disabled={busy} onClick={() => void saveEdit(category)}>
                         Guardar
                       </button>{" "}
-                      <button type="button" onClick={() => setEditingId(null)}>
+                      <button type="button" onClick={cancelEdit}>
                         Cancelar
                       </button>
+                      {rowError && (
+                        <Alert kind="danger" style={{ marginTop: "0.4rem" }}>
+                          {rowError}
+                        </Alert>
+                      )}
                     </td>
                   </tr>
                 ) : (
                   <tr key={category.id} className={category.active ? "" : "inactive"}>
                     <td>{category.name}</td>
-                    <td className="num">
+                    <td className="num" data-label="Margen mínimo">
                       {category.min_margin === null ? <span className="chip warn">Sin definir</span> : formatPercent(category.min_margin)}
                     </td>
-                    <td className="num">
+                    <td className="num" data-label="Margen superior">
                       {category.upper_margin === null ? <span className="chip warn">Sin definir</span> : formatPercent(category.upper_margin)}
                     </td>
                     <td>{category.active ? "Activa" : "Inactiva"}</td>
@@ -202,9 +228,27 @@ export default function CategoriesPage() {
                       <button type="button" className="link" onClick={() => startEdit(category)}>
                         Editar
                       </button>
-                      <button type="button" className="link" disabled={busy} onClick={() => void toggleActive(category)}>
-                        {category.active ? "Desactivar" : "Reactivar"}
-                      </button>
+                      {category.active ? (
+                        <button type="button" className="link" disabled={busy} onClick={() => setConfirmingId(category.id)}>
+                          Desactivar
+                        </button>
+                      ) : (
+                        <button type="button" className="link" disabled={busy} onClick={() => void toggleActive(category)}>
+                          Reactivar
+                        </button>
+                      )}
+                      {confirmingId === category.id && (
+                        <Alert kind="warn">
+                          ¿Desactivar «{category.name}»? Ya no aparecerá al crear productos. Sus productos conservan
+                          la categoría y siguen usando sus márgenes.{" "}
+                          <button type="button" className="danger" onClick={() => void toggleActive(category)}>
+                            Sí, desactivar
+                          </button>{" "}
+                          <button type="button" onClick={() => setConfirmingId(null)}>
+                            No
+                          </button>
+                        </Alert>
+                      )}
                     </td>
                   </tr>
                 ),

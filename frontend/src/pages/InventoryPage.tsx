@@ -1,23 +1,83 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { Category, OverviewRow } from "../api";
+import { Alert } from "../components/Alert";
 import { formatClp, formatContent, formatPercent, formatQuantity } from "../format";
+import { hashQuery, replaceHashQuery } from "../router";
 
 type Filter = "all" | "review" | "cost" | "market";
+type SortKey = "name" | "price" | "margin" | "status";
+
+const FILTER_PARAM: Record<Filter, string> = { all: "", review: "revisar", cost: "costo", market: "mercado" };
+
+function readFilter(value: string | null): Filter {
+  const found = (Object.keys(FILTER_PARAM) as Filter[]).find((key) => FILTER_PARAM[key] === value);
+  return found ?? "all";
+}
+
+function statusRank(row: OverviewRow): number {
+  if (row.needs_review) return 0;
+  if (row.cost_pending) return 1;
+  if (row.margins_pending) return 2;
+  return 3;
+}
+
+function compareRows(a: OverviewRow, b: OverviewRow, key: SortKey): number {
+  const nullsLast = (x: number | null, y: number | null) =>
+    x === null && y === null ? 0 : x === null ? 1 : y === null ? -1 : x - y;
+  switch (key) {
+    case "price":
+      return nullsLast(a.sale_price_clp, b.sale_price_clp);
+    case "margin":
+      return nullsLast(
+        a.current_gross_margin === null ? null : Number(a.current_gross_margin),
+        b.current_gross_margin === null ? null : Number(b.current_gross_margin),
+      );
+    case "status":
+      return statusRank(a) - statusRank(b);
+    default:
+      return a.name.localeCompare(b.name, "es");
+  }
+}
 
 export default function InventoryPage() {
+  // Los filtros viven en la dirección (#/?q=…&filtro=revisar) para que se
+  // conserven al volver desde la ficha de un producto.
+  const [initialQuery] = useState(() => hashQuery());
   const [rows, setRows] = useState<OverviewRow[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [search, setSearch] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [includeInactive, setIncludeInactive] = useState(false);
-  const [filter, setFilter] = useState<Filter>("all");
+  const [search, setSearch] = useState(initialQuery.get("q") ?? "");
+  const [categoryId, setCategoryId] = useState(initialQuery.get("categoria") ?? "");
+  const [includeInactive, setIncludeInactive] = useState(initialQuery.get("inactivos") === "1");
+  const [filter, setFilter] = useState<Filter>(readFilter(initialQuery.get("filtro")));
+  const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({
+    key: (initialQuery.get("orden")?.replace(/^-/, "") as SortKey) || "name",
+    desc: initialQuery.get("orden")?.startsWith("-") ?? false,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const [hasCategories, setHasCategories] = useState(true);
 
   useEffect(() => {
-    api.categories(true).then(setCategories).catch(() => setCategories([]));
+    api
+      .categories(true)
+      .then((data) => {
+        setCategories(data);
+        setHasCategories(data.length > 0);
+      })
+      .catch(() => setCategories([]));
   }, []);
+
+  useEffect(() => {
+    replaceHashQuery({
+      q: search.trim(),
+      categoria: categoryId,
+      inactivos: includeInactive ? "1" : "",
+      filtro: FILTER_PARAM[filter],
+      orden: sort.key === "name" && !sort.desc ? "" : `${sort.desc ? "-" : ""}${sort.key}`,
+    });
+  }, [search, categoryId, includeInactive, filter, sort]);
 
   useEffect(() => {
     let cancelled = false;
@@ -37,14 +97,34 @@ export default function InventoryPage() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [search, categoryId, includeInactive]);
+  }, [search, categoryId, includeInactive, attempt]);
 
-  const visible = rows.filter((row) => {
-    if (filter === "review") return row.needs_review;
-    if (filter === "cost") return row.cost_pending;
-    if (filter === "market") return row.market_reference_count === 0;
-    return true;
-  });
+  const visible = rows
+    .filter((row) => {
+      if (filter === "review") return row.needs_review;
+      if (filter === "cost") return row.cost_pending;
+      if (filter === "market") return row.market_reference_count === 0;
+      return true;
+    })
+    .sort((a, b) => compareRows(a, b, sort.key) * (sort.desc ? -1 : 1));
+
+  const searching = search.trim() !== "" || categoryId !== "";
+
+  function sortBy(key: SortKey) {
+    setSort((current) => ({ key, desc: current.key === key ? !current.desc : false }));
+  }
+
+  function sortHeader(label: string, sortKey: SortKey, className?: string) {
+    const active = sort.key === sortKey;
+    return (
+      <th key={sortKey} className={className} aria-sort={active ? (sort.desc ? "descending" : "ascending") : undefined}>
+        <button type="button" className="sort" onClick={() => sortBy(sortKey)}>
+          {label}
+          {active ? (sort.desc ? " ▼" : " ▲") : ""}
+        </button>
+      </th>
+    );
+  }
 
   const counts = {
     review: rows.filter((r) => r.needs_review).length,
@@ -57,19 +137,17 @@ export default function InventoryPage() {
       <div className="page-header">
         <div>
           <h2>Inventario</h2>
-          <p>Productos del minimarket con su cantidad, precio actual y estado de la información.</p>
+          <p className="page-intro">Productos del minimarket con su cantidad, precio actual y estado de la información.</p>
         </div>
-        <a href="#/productos/nuevo">
-          <button type="button" className="primary">
-            Nuevo producto
-          </button>
+        <a className="button primary" href="#/productos/nuevo">
+          Nuevo producto
         </a>
       </div>
 
       <div className="toolbar">
         <input
           type="search"
-          placeholder="Buscar por nombre o marca"
+          placeholder="Buscar por nombre, marca o código"
           aria-label="Buscar producto"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
@@ -114,28 +192,67 @@ export default function InventoryPage() {
         />
       </div>
 
-      {error && <div className="alert danger">{error}</div>}
-
       <div className="card table-wrap">
-        {loading && rows.length === 0 ? (
+        {loading && rows.length === 0 && !error ? (
           <p className="empty">Cargando…</p>
+        ) : error ? (
+          <div className="empty">
+            <Alert kind="danger">No se pudo cargar el inventario. {error}</Alert>
+            <button type="button" className="primary" onClick={() => setAttempt((value) => value + 1)}>
+              Reintentar
+            </button>
+          </div>
+        ) : rows.length === 0 && searching ? (
+          <div className="empty">
+            <p>
+              {search.trim()
+                ? `Ningún producto coincide con «${search.trim()}».`
+                : "No hay productos en esta categoría."}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setCategoryId("");
+              }}
+            >
+              Borrar búsqueda
+            </button>
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="empty">
+            <p>Todavía no hay productos. Para que SIM te muestre el rango de precios, conviene seguir este orden:</p>
+            <ol className="steps">
+              <li>
+                <a href="#/categorias">Crea las categorías y sus márgenes</a>
+                {hasCategories ? " (ya tienes algunas)." : "."}
+              </li>
+              <li>
+                <a href="#/productos/nuevo">Agrega tus productos</a> con su precio y su último costo.
+              </li>
+              <li>
+                <a href="#/mercado">Registra precios de mercado</a> para comparar.
+              </li>
+            </ol>
+          </div>
         ) : visible.length === 0 ? (
-          <p className="empty">
-            {rows.length === 0
-              ? "Todavía no hay productos. Crea el primero con “Nuevo producto”."
-              : "Ningún producto coincide con el filtro."}
-          </p>
+          <div className="empty">
+            <p>Ningún producto coincide con el filtro.</p>
+            <button type="button" onClick={() => setFilter("all")}>
+              Ver todos
+            </button>
+          </div>
         ) : (
-          <table>
+          <table className="cards">
             <thead>
               <tr>
-                <th>Producto</th>
+                {sortHeader("Producto", "name")}
                 <th>Categoría</th>
                 <th className="num">Cantidad</th>
-                <th className="num">Precio venta</th>
+                {sortHeader("Precio venta", "price", "num")}
                 <th className="num">Costo unit.</th>
-                <th className="num">Margen bruto</th>
-                <th>Estado</th>
+                {sortHeader("Margen bruto", "margin", "num")}
+                {sortHeader("Estado", "status")}
               </tr>
             </thead>
             <tbody>
@@ -151,13 +268,13 @@ export default function InventoryPage() {
                         .join(" · ")}
                     </span>
                   </td>
-                  <td>{row.category_name ?? <span className="muted">Sin categoría</span>}</td>
-                  <td className="num">
+                  <td data-label="Categoría">{row.category_name ?? <span className="muted">Sin categoría</span>}</td>
+                  <td className="num" data-label="Cantidad">
                     {row.track_stock ? formatQuantity(row.quantity, row.stock_unit) : "—"}
                   </td>
-                  <td className="num">{formatClp(row.sale_price_clp)}</td>
-                  <td className="num">{formatClp(row.total_unit_cost_clp)}</td>
-                  <td className="num">{formatPercent(row.current_gross_margin)}</td>
+                  <td className="num price">{formatClp(row.sale_price_clp)}</td>
+                  <td className="num" data-label="Costo">{formatClp(row.total_unit_cost_clp)}</td>
+                  <td className="num" data-label="Margen">{formatPercent(row.current_gross_margin)}</td>
                   <td>
                     <div className="chips">
                       {!row.active && <span className="chip">Inactivo</span>}

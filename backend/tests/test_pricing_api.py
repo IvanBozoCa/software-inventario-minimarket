@@ -239,7 +239,7 @@ def test_market_references_regular_promo_stale_and_match_type(client):
         json={
             "price_clp": 1450,
             "price_type": "PROMO",
-            "observed_on": today.isoformat(),
+            "observed_on": (today - timedelta(days=3)).isoformat(),
             "promo_valid_until": (today - timedelta(days=1)).isoformat(),
         },
     )

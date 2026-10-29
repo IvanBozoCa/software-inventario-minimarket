@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { api, setAccessToken } from "../api";
 import type { AccessStatus } from "../api";
 import { sendMagicLink, supabaseClient } from "../auth/supabase";
+import { Alert } from "../components/Alert";
 
 type Props = {
   status: AccessStatus;
@@ -23,7 +24,7 @@ export default function LoginPage({ status, notice, onLoggedIn }: Props) {
       />
     );
   }
-  return <PasswordForm onLoggedIn={onLoggedIn} />;
+  return <PasswordForm onLoggedIn={onLoggedIn} notice={notice ?? null} />;
 }
 
 function MagicLinkForm({ url, anonKey, notice }: { url: string; anonKey: string; notice: string | null }) {
@@ -91,7 +92,7 @@ function MagicLinkForm({ url, anonKey, notice }: { url: string; anonKey: string;
   );
 }
 
-function PasswordForm({ onLoggedIn }: { onLoggedIn: () => void }) {
+function PasswordForm({ onLoggedIn, notice }: { onLoggedIn: () => void; notice: string | null }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -114,6 +115,7 @@ function PasswordForm({ onLoggedIn }: { onLoggedIn: () => void }) {
   return (
     <section className="card login-card">
       <h2>Acceso al administrador</h2>
+      {notice && <Alert kind="warn">{notice}</Alert>}
       <p className="muted">
         Esta instalación de SIM está publicada en Internet y protegida con una contraseña única.
       </p>

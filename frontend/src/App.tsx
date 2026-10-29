@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import "./admin.css";
-import { api, setAccessToken, UNAUTHORIZED_EVENT } from "./api";
+import { api, OFFLINE_EVENT, ONLINE_EVENT, setAccessToken, UNAUTHORIZED_EVENT } from "./api";
 import type { AccessStatus } from "./api";
 import { applySession, supabaseClient } from "./auth/supabase";
 import CategoriesPage from "./pages/CategoriesPage";
@@ -35,11 +35,51 @@ function hasSupabase(status: AccessStatus): status is AccessStatus & {
   return status.mode === "supabase" && !!status.supabase_url && !!status.supabase_anon_key;
 }
 
+const PAGE_TITLE: Record<Route["page"], string> = {
+  inventory: "Inventario",
+  "product-new": "Nuevo producto",
+  "product-edit": "Editar producto",
+  product: "Ficha del producto",
+  categories: "Categorías y márgenes",
+  market: "Precios de mercado",
+};
+
 function App() {
   const route = useRoute();
   const [access, setAccess] = useState<Access>("checking");
   const [status, setStatus] = useState<AccessStatus>(OPEN_STATUS);
   const [loginNotice, setLoginNotice] = useState<string | null>(null);
+  // Cambia para volver a consultar el servidor (botón Reintentar o reintento automático).
+  const [attempt, setAttempt] = useState(0);
+  // La conexión se perdió después de entrar: la pantalla sigue, pero la cabecera lo dice.
+  const [connectionLost, setConnectionLost] = useState(false);
+  // Se entró al menos una vez: las pantallas se mantienen montadas (ocultas)
+  // si la sesión vence, para no perder lo que se estaba escribiendo.
+  const [hasEntered, setHasEntered] = useState(false);
+
+  if (access === "ok" && !hasEntered) setHasEntered(true);
+
+  useEffect(() => {
+    document.title = `${PAGE_TITLE[route.page]} · SIM`;
+  }, [route.page]);
+
+  useEffect(() => {
+    const onOffline = () => setConnectionLost(true);
+    const onOnline = () => setConnectionLost(false);
+    window.addEventListener(OFFLINE_EVENT, onOffline);
+    window.addEventListener(ONLINE_EVENT, onOnline);
+    return () => {
+      window.removeEventListener(OFFLINE_EVENT, onOffline);
+      window.removeEventListener(ONLINE_EVENT, onOnline);
+    };
+  }, []);
+
+  // Sin conexión al abrir: se reintenta solo cada 10 segundos.
+  useEffect(() => {
+    if (access !== "offline") return;
+    const timer = setTimeout(() => setAttempt((value) => value + 1), 10000);
+    return () => clearTimeout(timer);
+  }, [access, attempt]);
 
   useEffect(() => {
     let cancelled = false;
@@ -110,6 +150,9 @@ function App() {
     const onUnauthorized = () => {
       setAccessToken(null);
       setStatus((current) => ({ ...current, required: true, authenticated: false }));
+      setLoginNotice(
+        "Tu sesión venció y el último cambio no se guardó. Vuelve a entrar: lo que estabas escribiendo se conserva para que lo guardes de nuevo.",
+      );
       setAccess("login");
     };
     window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
@@ -118,11 +161,12 @@ function App() {
       unsubscribe();
       window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
     };
-  }, []);
+  }, [attempt]);
 
   const logout = () => {
     setAccessToken(null);
     setLoginNotice(null);
+    setHasEntered(false);
     setAccess("login");
     if (hasSupabase(status)) {
       void supabaseClient(status.supabase_url, status.supabase_anon_key).auth.signOut();
@@ -155,9 +199,12 @@ function App() {
             ))}
           </nav>
         )}
-        <span className={`backend-status backend-${access}`} role="status">
+        <span
+          className={`backend-status backend-${access === "ok" && connectionLost ? "warn" : access}`}
+          role="status"
+        >
           {access === "checking" && "Conectando…"}
-          {access === "ok" && "Conectado"}
+          {access === "ok" && (connectionLost ? "Sin conexión" : "Conectado")}
           {access === "login" && "Sesión requerida"}
           {access === "offline" && "Sin conexión con el servidor"}
         </span>
@@ -169,28 +216,38 @@ function App() {
       </header>
 
       <main className="admin-main">
+        {access === "checking" && <p className="loading-screen">Cargando SIM…</p>}
         {access === "offline" && (
           <section className="card">
             <h2>No se pudo conectar con el servidor de SIM</h2>
             <p>
-              Si usas SIM en tu propio equipo, inicia el backend (ver README) y vuelve a cargar
-              esta página. Si usas la versión publicada, revisa tu conexión a Internet e inténtalo
-              de nuevo.
+              Revisa tu conexión a Internet. SIM vuelve a intentarlo solo cada 10 segundos, o
+              puedes intentarlo ahora.
             </p>
+            <button type="button" className="primary" onClick={() => setAttempt((value) => value + 1)}>
+              Reintentar
+            </button>
           </section>
         )}
         {access === "login" && (
-          <LoginPage status={status} notice={loginNotice} onLoggedIn={() => setAccess("ok")} />
+          <LoginPage
+            status={status}
+            notice={loginNotice}
+            onLoggedIn={() => {
+              setLoginNotice(null);
+              setAccess("ok");
+            }}
+          />
         )}
-        {access === "ok" && (
-          <>
+        {(access === "ok" || hasEntered) && (
+          <div hidden={access !== "ok"}>
             {route.page === "inventory" && <InventoryPage />}
             {route.page === "product-new" && <ProductFormPage />}
-            {route.page === "product-edit" && <ProductFormPage productId={route.id} />}
-            {route.page === "product" && <ProductDetailPage productId={route.id} />}
+            {route.page === "product-edit" && <ProductFormPage key={route.id} productId={route.id} />}
+            {route.page === "product" && <ProductDetailPage key={route.id} productId={route.id} />}
             {route.page === "categories" && <CategoriesPage />}
             {route.page === "market" && <MarketPage />}
-          </>
+          </div>
         )}
       </main>
     </div>

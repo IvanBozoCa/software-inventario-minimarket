@@ -1,28 +1,42 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../api";
-import type { MarketReference, MatchType, ProductDetail } from "../api";
+import type { MarketReference, MatchType, Product, ProductDetail, StockUnit } from "../api";
+import { Alert } from "../components/Alert";
+import { useAutoClear } from "../useAutoClear";
 import { ReferenceCard } from "../components/ReferenceCard";
 import {
+  MAX_PRICE_CLP,
   SCOPE_LABEL,
   STOCK_UNIT_LABEL,
+  foldText,
   formatClp,
+  formatContent,
   formatDate,
   formatDateTime,
   formatPercent,
   formatQuantity,
-  parseDecimalInput,
-  productTitle,
+  priceWarning,
+  readNumberField,
+  toNumberInput,
 } from "../format";
+import { isUuid, takeFlash } from "../router";
 
 type Panel = "none" | "price" | "cost" | "stock" | "link";
 
+const DANGER_WARNINGS = new Set(["PRICE_BELOW_COST", "MARGIN_BELOW_MIN", "COST_INCREASED"]);
+
 export default function ProductDetailPage({ productId }: { productId: string }) {
+  const validId = isUuid(productId);
   const [detail, setDetail] = useState<ProductDetail | null>(null);
+  const [loadError, setLoadError] = useState(validId ? "" : "Producto no encontrado");
   const [error, setError] = useState("");
   const [panel, setPanel] = useState<Panel>("none");
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState(() => takeFlash());
+  const [confirmDeactivate, setConfirmDeactivate] = useState(false);
+  const clearNotice = useCallback(() => setNotice(""), []);
+  useAutoClear(notice, clearNotice);
 
   const reload = useCallback(async () => {
     try {
@@ -34,19 +48,27 @@ export default function ProductDetailPage({ productId }: { productId: string }) 
   }, [productId]);
 
   useEffect(() => {
+    if (!validId) return;
     let cancelled = false;
     api
       .productDetail(productId)
       .then((data) => !cancelled && setDetail(data))
-      .catch((err: Error) => !cancelled && setError(err.message));
+      .catch((err: Error) => !cancelled && setLoadError(err.message));
     return () => {
       cancelled = true;
     };
-  }, [productId]);
+  }, [productId, validId]);
+
+  function openPanel(next: Panel) {
+    setPanel(panel === next ? "none" : next);
+    setNotice("");
+    setError("");
+  }
 
   async function run(action: () => Promise<unknown>, successMessage: string) {
     setBusy(true);
     setNotice("");
+    setError("");
     try {
       await action();
       await reload();
@@ -59,11 +81,38 @@ export default function ProductDetailPage({ productId }: { productId: string }) 
     }
   }
 
-  if (error && !detail) return <div className="alert danger">{error}</div>;
-  if (!detail) return <p className="empty">Cargando…</p>;
+  if (loadError && !detail) {
+    const notFound = loadError === "Producto no encontrado";
+    return (
+      <section className="card">
+        <h2>{notFound ? "Producto no encontrado" : "No se pudo cargar el producto"}</h2>
+        <p>
+          {notFound
+            ? "La dirección no corresponde a ningún producto. Puede que el enlace esté incompleto."
+            : loadError}
+        </p>
+        <a className="button primary" href="#/">
+          Volver al inventario
+        </a>
+      </section>
+    );
+  }
+  if (!detail) return <p className="loading-screen">Cargando producto…</p>;
 
   const { product, pricing, market } = detail;
-  const title = productTitle(product);
+  const subtitle = [
+    product.brand,
+    product.variant,
+    formatContent(product.content_amount, product.content_unit),
+    detail.category_name ?? "Sin categoría",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const dangerWarnings = pricing.warnings.filter((warning) => DANGER_WARNINGS.has(warning.code));
+  const otherWarnings = pricing.warnings.filter((warning) => !DANGER_WARNINGS.has(warning.code));
+  const marginAlert = pricing.warnings.some(
+    (warning) => warning.code === "MARGIN_BELOW_MIN" || warning.code === "PRICE_BELOW_COST",
+  );
 
   return (
     <section>
@@ -76,33 +125,59 @@ export default function ProductDetailPage({ productId }: { productId: string }) 
             {product.name}
             {!product.active && <span className="chip" style={{ marginLeft: "0.5rem" }}>Inactivo</span>}
           </h2>
-          <p>
-            {title !== product.name ? title : ""}
-            {detail.category_name ? ` · ${detail.category_name}` : " · Sin categoría"}
-          </p>
+          <p>{subtitle}</p>
         </div>
         <div className="actions" style={{ marginTop: 0 }}>
-          <a href={`#/productos/${product.id}/editar`}>
-            <button type="button">Editar ficha</button>
+          <a className="button" href={`#/productos/${product.id}/editar`}>
+            Editar ficha
           </a>
-          <button
-            type="button"
-            className={product.active ? "danger" : "primary"}
-            disabled={busy}
-            onClick={() =>
-              void run(
-                () => api.updateProduct(product.id, { active: !product.active }),
-                product.active ? "Producto desactivado. Su historial se conserva." : "Producto reactivado.",
-              )
-            }
-          >
-            {product.active ? "Desactivar" : "Reactivar"}
-          </button>
+          {product.active ? (
+            <button type="button" className="danger" disabled={busy} onClick={() => setConfirmDeactivate(true)}>
+              Desactivar
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="primary"
+              disabled={busy}
+              onClick={() => void run(() => api.updateProduct(product.id, { active: true }), "Producto reactivado.")}
+            >
+              Reactivar
+            </button>
+          )}
         </div>
       </div>
 
-      {error && <div className="alert danger">{error}</div>}
-      {notice && <div className="alert ok">{notice}</div>}
+      {confirmDeactivate && product.active && (
+        <Alert kind="warn">
+          ¿Desactivar «{product.name}»? Se ocultará del inventario, pero su historial se conserva y podrás
+          reactivarlo cuando quieras.{" "}
+          <button
+            type="button"
+            className="danger"
+            disabled={busy}
+            onClick={() => {
+              setConfirmDeactivate(false);
+              void run(
+                () => api.updateProduct(product.id, { active: false }),
+                "Producto desactivado. Su historial se conserva.",
+              );
+            }}
+          >
+            Sí, desactivar
+          </button>{" "}
+          <button type="button" onClick={() => setConfirmDeactivate(false)}>
+            No
+          </button>
+        </Alert>
+      )}
+      {error && <Alert kind="danger">{error}</Alert>}
+      {notice && <Alert kind="ok">{notice}</Alert>}
+      {dangerWarnings.map((warning) => (
+        <Alert key={warning.code} kind="danger">
+          {warning.message}
+        </Alert>
+      ))}
 
       <div className="stats" style={{ marginBottom: "1rem" }}>
         <div className="stat">
@@ -111,7 +186,7 @@ export default function ProductDetailPage({ productId }: { productId: string }) 
             {product.track_stock ? formatQuantity(detail.quantity, product.stock_unit) : "No se controla"}
           </span>
           {product.track_stock && (
-            <button type="button" className="link" onClick={() => setPanel(panel === "stock" ? "none" : "stock")}>
+            <button type="button" className="link" onClick={() => openPanel("stock")}>
               Actualizar cantidad
             </button>
           )}
@@ -119,7 +194,7 @@ export default function ProductDetailPage({ productId }: { productId: string }) 
         <div className="stat">
           <span className="label">Precio de venta actual</span>
           <span className="value">{formatClp(product.sale_price_clp)}</span>
-          <button type="button" className="link" onClick={() => setPanel(panel === "price" ? "none" : "price")}>
+          <button type="button" className="link" onClick={() => openPanel("price")}>
             Cambiar precio
           </button>
         </div>
@@ -133,17 +208,19 @@ export default function ProductDetailPage({ productId }: { productId: string }) 
                 ? "sin costo adicional de abastecimiento"
                 : "costo pendiente"}
           </span>
-          <button type="button" className="link" onClick={() => setPanel(panel === "cost" ? "none" : "cost")}>
+          <button type="button" className="link" onClick={() => openPanel("cost")}>
             {pricing.unit_cost_clp ? "Actualizar costo" : "Registrar costo"}
           </button>
         </div>
-        <div className="stat">
+        <div className={`stat ${marginAlert ? "danger" : ""}`}>
           <span className="label">Margen bruto actual</span>
           <span className="value">{formatPercent(pricing.current_gross_margin)}</span>
           <span className="detail">
-            {pricing.current_markup !== null
-              ? `recargo sobre el costo: ${formatPercent(pricing.current_markup)}`
-              : "requiere precio y costo"}
+            {marginAlert && pricing.min_margin !== null
+              ? `bajo tu mínimo de ${formatPercent(pricing.min_margin)}`
+              : pricing.current_markup !== null
+                ? `recargo sobre el costo: ${formatPercent(pricing.current_markup)}`
+                : "requiere precio y costo"}
           </span>
         </div>
       </div>
@@ -151,6 +228,7 @@ export default function ProductDetailPage({ productId }: { productId: string }) 
       {panel === "price" && (
         <PricePanel
           current={product.sale_price_clp}
+          cost={pricing.total_unit_cost_clp === null ? null : Number(pricing.total_unit_cost_clp)}
           busy={busy}
           onCancel={() => setPanel("none")}
           onSave={(price, note) =>
@@ -170,7 +248,7 @@ export default function ProductDetailPage({ productId }: { productId: string }) 
       {panel === "stock" && (
         <StockPanel
           current={detail.quantity}
-          unitLabel={STOCK_UNIT_LABEL[product.stock_unit]}
+          unit={product.stock_unit}
           busy={busy}
           onCancel={() => setPanel("none")}
           onSave={(quantity, note) =>
@@ -182,15 +260,8 @@ export default function ProductDetailPage({ productId }: { productId: string }) 
       <div className="card-grid">
         <section className="card">
           <h3>Rango de precios según márgenes</h3>
-          {pricing.warnings.map((warning) => (
-            <div
-              key={warning.code}
-              className={`alert ${
-                warning.code === "PRICE_BELOW_COST" || warning.code === "MARGIN_BELOW_MIN" || warning.code === "COST_INCREASED"
-                  ? "danger"
-                  : "warn"
-              }`}
-            >
+          {otherWarnings.map((warning) => (
+            <Alert key={warning.code} kind="warn">
               {warning.message}
               {warning.code === "MARGINS_MISSING" && (
                 <>
@@ -198,7 +269,7 @@ export default function ProductDetailPage({ productId }: { productId: string }) 
                   <a href="#/categorias">Configurar márgenes</a>
                 </>
               )}
-            </div>
+            </Alert>
           ))}
           {pricing.range_available ? (
             <table>
@@ -213,7 +284,7 @@ export default function ProductDetailPage({ productId }: { productId: string }) 
                     <span className="sub">{pricing.min_margin_source === "PRODUCT" ? "margen del producto" : "margen de la categoría"}</span>
                   </td>
                   <td className="num">
-                    <strong>{formatClp(pricing.price_at_min_margin, true)}</strong>
+                    <strong>{formatClp(roundUpPeso(pricing.price_at_min_margin))}</strong>
                   </td>
                 </tr>
                 <tr>
@@ -222,7 +293,7 @@ export default function ProductDetailPage({ productId }: { productId: string }) 
                     <span className="sub">{pricing.upper_margin_source === "PRODUCT" ? "margen del producto" : "margen de la categoría"}</span>
                   </td>
                   <td className="num">
-                    <strong>{formatClp(pricing.price_at_upper_margin, true)}</strong>
+                    <strong>{formatClp(roundUpPeso(pricing.price_at_upper_margin))}</strong>
                   </td>
                 </tr>
                 <tr>
@@ -239,8 +310,8 @@ export default function ProductDetailPage({ productId }: { productId: string }) 
             </p>
           )}
           <p className="muted">
-            Los precios calculados no se redondean ni se aplican automáticamente: tú decides el precio
-            definitivo. Es margen bruto sobre los costos registrados, no utilidad neta.
+            Los precios calculados se redondean hacia arriba al peso para no quedar bajo el margen, y
+            no se aplican automáticamente: tú decides el precio definitivo. Es margen bruto sobre los costos registrados, no utilidad neta.
           </p>
         </section>
 
@@ -273,23 +344,23 @@ export default function ProductDetailPage({ productId }: { productId: string }) 
                 </p>
               )}
               {market.has_stale && (
-                <div className="alert warn">
+                <Alert kind="warn">
                   Hay referencias con más de {market.stale_days} días: precio por verificar.
-                </div>
+                </Alert>
               )}
             </>
           )}
           <div className="actions" style={{ marginTop: "0.4rem" }}>
-            <button type="button" onClick={() => setPanel(panel === "link" ? "none" : "link")}>
+            <button type="button" onClick={() => openPanel("link")}>
               Asociar referencia existente
             </button>
-            <a href="#/mercado">
-              <button type="button">Registrar nueva referencia</button>
+            <a className="button" href={`#/mercado?producto=${product.id}`}>
+              Registrar nueva referencia
             </a>
           </div>
           {panel === "link" && (
             <LinkPanel
-              productId={product.id}
+              product={product}
               onLinked={() => void run(async () => undefined, "Referencia asociada al producto.")}
               onCancel={() => setPanel("none")}
             />
@@ -425,47 +496,82 @@ function HistoryTable({
   );
 }
 
+function roundUpPeso(value: string | null): number | null {
+  return value === null ? null : Math.ceil(Number(value));
+}
+
 function PricePanel({
   current,
+  cost,
   busy,
   onSave,
   onCancel,
 }: {
   current: number | null;
+  cost: number | null;
   busy: boolean;
   onSave: (price: number, note: string) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [price, setPrice] = useState(current === null ? "" : String(current));
+  const [price, setPrice] = useState(toNumberInput(current));
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
+  // Precio inusual pendiente de confirmar: 0, bajo el costo o un cambio de más de 50 %.
+  const [pending, setPending] = useState<{ price: number; warning: string } | null>(null);
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    const numeric = Number(price.replace(/\./g, ""));
-    if (!price.trim() || Number.isNaN(numeric) || numeric < 0 || !Number.isInteger(numeric)) {
-      setError("Ingresa el nuevo precio en pesos, sin decimales.");
+    let value: number;
+    try {
+      value = Number(
+        readNumberField(price, "el nuevo precio", { required: true, integer: true, max: MAX_PRICE_CLP, example: "1.990" }),
+      );
+    } catch (err) {
+      setError((err as Error).message);
+      setPending(null);
       return;
     }
     setError("");
-    void onSave(numeric, note);
+    const warning = priceWarning(value, current, cost);
+    if (warning && pending?.price !== value) {
+      setPending({ price: value, warning });
+      return;
+    }
+    setPending(null);
+    void onSave(value, note);
   }
 
   return (
-    <form className="card" onSubmit={submit}>
+    <form className="card" onSubmit={submit} noValidate>
       <h3>Cambiar precio de venta</h3>
-      {error && <div className="alert danger">{error}</div>}
+      {error && <Alert kind="danger">{error}</Alert>}
+      {pending && (
+        <Alert kind="warn">
+          {pending.warning} ¿Seguro? Pulsa «Sí, guardar {formatClp(pending.price)}» para confirmar o corrige el
+          precio.
+        </Alert>
+      )}
       <div className="inline-form">
         <label className="field">
           Nuevo precio (CLP)
-          <input inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value)} autoFocus />
+          <input
+            inputMode="numeric"
+            value={price}
+            onChange={(e) => {
+              setPrice(e.target.value);
+              setPending(null);
+            }}
+            placeholder="Ej.: 1.990"
+            aria-invalid={error ? true : undefined}
+            autoFocus
+          />
         </label>
         <label className="field">
           Motivo <span className="hint">opcional</span>
           <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ej.: alza de costo" />
         </label>
         <button type="submit" className="primary" disabled={busy}>
-          Confirmar nuevo precio
+          {pending ? `Sí, guardar ${formatClp(pending.price)}` : "Confirmar nuevo precio"}
         </button>
         <button type="button" onClick={onCancel}>
           Cancelar
@@ -488,22 +594,23 @@ function CostPanel({
   onSave: (body: { last_unit_cost_clp: string | null; extra_supply_cost_clp: string | null; source?: string; note?: string }) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [unit, setUnit] = useState(unitCost ?? "");
-  const [extra, setExtra] = useState(extraCost ?? "");
+  // Los valores de la API ("1450.00") se muestran en formato chileno ("1.450")
+  // para que guardar sin cambios no altere el costo.
+  const [unit, setUnit] = useState(toNumberInput(unitCost));
+  const [extra, setExtra] = useState(toNumberInput(extraCost));
   const [source, setSource] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    const unitValue = parseDecimalInput(unit);
-    const extraValue = parseDecimalInput(extra);
-    if (unit.trim() && unitValue === null) {
-      setError("El costo unitario debe ser un número.");
-      return;
-    }
-    if (extra.trim() && extraValue === null) {
-      setError("El costo adicional debe ser un número.");
+    let unitValue: string | null;
+    let extraValue: string | null;
+    try {
+      unitValue = readNumberField(unit, "el costo unitario", { max: MAX_PRICE_CLP, example: "1.450" });
+      extraValue = readNumberField(extra, "el costo adicional", { max: MAX_PRICE_CLP, example: "80" });
+    } catch (err) {
+      setError((err as Error).message);
       return;
     }
     setError("");
@@ -516,21 +623,21 @@ function CostPanel({
   }
 
   return (
-    <form className="card" onSubmit={submit}>
+    <form className="card" onSubmit={submit} noValidate>
       <h3>Registrar costo unitario</h3>
       <p className="muted" style={{ marginTop: 0 }}>
         El costo de compra se conserva separado del costo adicional de abastecimiento (por ejemplo, el
         transporte hasta Pichilemu). Ninguno se inventa: registra solo lo que conoces.
       </p>
-      {error && <div className="alert danger">{error}</div>}
+      {error && <Alert kind="danger">{error}</Alert>}
       <div className="inline-form">
         <label className="field">
           Costo unitario de compra (CLP)
-          <input inputMode="decimal" value={unit} onChange={(e) => setUnit(e.target.value)} autoFocus />
+          <input inputMode="decimal" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="Ej.: 1.450" autoFocus />
         </label>
         <label className="field">
           Costo adicional de abastecimiento por unidad
-          <input inputMode="decimal" value={extra} onChange={(e) => setExtra(e.target.value)} />
+          <input inputMode="decimal" value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="Ej.: 80" />
         </label>
         <label className="field">
           Fuente <span className="hint">factura, proveedor…</span>
@@ -553,40 +660,50 @@ function CostPanel({
 
 function StockPanel({
   current,
-  unitLabel,
+  unit,
   busy,
   onSave,
   onCancel,
 }: {
   current: string | null;
-  unitLabel: string;
+  unit: StockUnit;
   busy: boolean;
   onSave: (quantity: string, note: string) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [quantity, setQuantity] = useState(current ? String(Number(current)) : "");
+  const [quantity, setQuantity] = useState(toNumberInput(current));
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    const value = parseDecimalInput(quantity);
-    if (value === null || Number(value) < 0) {
-      setError("Ingresa la cantidad contada.");
+    let value: string | null;
+    try {
+      value = readNumberField(quantity, "la cantidad", { required: true, example: unit === "UNIT" ? "24" : "1,5" });
+      if (unit === "UNIT" && !Number.isInteger(Number(value))) {
+        throw new Error("Este producto se cuenta por unidades: la cantidad va sin decimales.");
+      }
+    } catch (err) {
+      setError((err as Error).message);
       return;
     }
     setError("");
-    void onSave(value, note);
+    void onSave(value as string, note);
   }
 
   return (
-    <form className="card" onSubmit={submit}>
+    <form className="card" onSubmit={submit} noValidate>
       <h3>Actualizar cantidad disponible</h3>
-      {error && <div className="alert danger">{error}</div>}
+      {error && <Alert kind="danger">{error}</Alert>}
       <div className="inline-form">
         <label className="field">
-          Cantidad actual ({unitLabel})
-          <input inputMode="decimal" value={quantity} onChange={(e) => setQuantity(e.target.value)} autoFocus />
+          Cantidad actual ({STOCK_UNIT_LABEL[unit]})
+          <input
+            inputMode={unit === "UNIT" ? "numeric" : "decimal"}
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+            autoFocus
+          />
         </label>
         <label className="field">
           Nota <span className="hint">opcional</span>
@@ -603,18 +720,38 @@ function StockPanel({
   );
 }
 
+/** Qué tanto se parece una referencia al producto (marca, variante y contenido). */
+function similarity(product: Product, reference: MarketReference): number {
+  const same = (a: string | null, b: string | null) => !!a && !!b && foldText(a) === foldText(b);
+  let score = 0;
+  if (same(product.brand, reference.brand)) score += 2;
+  if (same(product.variant, reference.variant)) score += 1;
+  if (
+    product.content_amount &&
+    reference.content_amount &&
+    Number(product.content_amount) === Number(reference.content_amount) &&
+    product.content_unit === reference.content_unit
+  ) {
+    score += 2;
+  }
+  if (foldText(reference.product_name).includes(foldText(product.name))) score += 1;
+  return score;
+}
+
 function LinkPanel({
-  productId,
+  product,
   onLinked,
   onCancel,
 }: {
-  productId: string;
+  product: Product;
   onLinked: () => void;
   onCancel: () => void;
 }) {
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<MarketReference[]>([]);
-  const [matchType, setMatchType] = useState<MatchType>("EXACT");
+  // "Mismo producto" no se da por hecho: cambia el valor más bajo del mercado
+  // que muestra la ficha, así que debe elegirse a propósito.
+  const [matchType, setMatchType] = useState<MatchType>("EQUIVALENT");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -629,16 +766,18 @@ function LinkPanel({
 
   async function link(reference: MarketReference) {
     try {
-      await api.linkReference(reference.id, productId, matchType);
+      await api.linkReference(reference.id, product.id, matchType);
       onLinked();
     } catch (err) {
       setError((err as Error).message);
     }
   }
 
+  const sorted = [...results].sort((a, b) => similarity(product, b) - similarity(product, a));
+
   return (
     <div style={{ marginTop: "0.8rem" }}>
-      {error && <div className="alert danger">{error}</div>}
+      {error && <Alert kind="danger">{error}</Alert>}
       <div className="inline-form">
         <label className="field">
           Buscar referencia sin asociar
@@ -647,28 +786,28 @@ function LinkPanel({
         <label className="field">
           Tipo de coincidencia
           <select value={matchType} onChange={(e) => setMatchType(e.target.value as MatchType)}>
-            <option value="EXACT">Mismo producto (marca, variante y presentación)</option>
             <option value="EQUIVALENT">Producto equivalente (similar, no idéntico)</option>
+            <option value="EXACT">Mismo producto (marca, variante y presentación)</option>
           </select>
         </label>
         <button type="button" onClick={onCancel}>
           Cerrar
         </button>
       </div>
-      {results.length === 0 ? (
+      {sorted.length === 0 ? (
         <p className="muted">No hay referencias sin asociar que coincidan.</p>
       ) : (
         <ul>
-          {results.slice(0, 15).map((reference) => (
+          {sorted.slice(0, 15).map((reference) => (
             <li key={reference.id}>
               {reference.product_name}
               {reference.brand ? ` · ${reference.brand}` : ""}
               {reference.variant ? ` · ${reference.variant}` : ""}
-              {reference.content_amount ? ` · ${Number(reference.content_amount).toLocaleString("es-CL")} ${reference.content_unit}` : ""}
+              {reference.content_amount ? ` · ${formatContent(reference.content_amount, reference.content_unit)}` : ""}
               {" — "}
               <span className="muted">{reference.source.name}</span>{" "}
               <button type="button" className="link" onClick={() => void link(reference)}>
-                Asociar
+                Asociar como {matchType === "EXACT" ? "mismo producto" : "equivalente"}
               </button>
             </li>
           ))}

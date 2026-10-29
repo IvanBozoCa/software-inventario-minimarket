@@ -13,7 +13,10 @@ import type {
   PriceType,
 } from "../api";
 import { ReferenceCard } from "../components/ReferenceCard";
-import { CONTENT_UNIT_LABEL, SCOPE_LABEL, parseDecimalInput, todayIso } from "../format";
+import { Alert } from "../components/Alert";
+import { useAutoClear } from "../useAutoClear";
+import { CONTENT_UNIT_LABEL, MAX_PRICE_CLP, SCOPE_LABEL, readNumberField, toNumberInput, todayIso } from "../format";
+import { hashQuery } from "../router";
 
 const SOURCE_TYPE_LABEL: Record<MarketSourceType, string> = {
   LOCAL_STORE: "Negocio local",
@@ -30,7 +33,14 @@ export default function MarketPage() {
   const [onlyUnlinked, setOnlyUnlinked] = useState(false);
   const [staleDays, setStaleDays] = useState<number | null>(null);
   const [error, setError] = useState("");
-  const [showNew, setShowNew] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [notice, setNotice] = useState("");
+  const clearNotice = useCallback(() => setNotice(""), []);
+  useAutoClear(notice, clearNotice);
+  // "Registrar nueva referencia" desde la ficha llega con ?producto=<id>.
+  const [presetProductId] = useState(() => hashQuery().get("producto") ?? "");
+  const [showNew, setShowNew] = useState(Boolean(presetProductId));
   const [showImport, setShowImport] = useState(false);
   const [showSource, setShowSource] = useState(false);
 
@@ -47,8 +57,12 @@ export default function MarketPage() {
       setProducts(prods);
       setStaleDays(settings.market_stale_days);
       setError("");
+      setLoadFailed(false);
     } catch (err) {
       setError((err as Error).message);
+      setLoadFailed(true);
+    } finally {
+      setLoaded(true);
     }
   }, [search, onlyUnlinked]);
 
@@ -66,7 +80,7 @@ export default function MarketPage() {
       <div className="page-header">
         <div>
           <h2>Precios de mercado</h2>
-          <p>
+          <p className="page-intro">
             Precios observados en otros negocios y sitios, con su fuente y fecha. Se mantienen separados
             de tus precios y no se promedian: son información para decidir.
           </p>
@@ -84,12 +98,14 @@ export default function MarketPage() {
         </div>
       </div>
 
-      {error && <div className="alert danger">{error}</div>}
+      {error && <Alert kind="danger">{error}</Alert>}
+      {notice && <Alert kind="ok">{notice}</Alert>}
 
       {showSource && (
         <SourceForm
-          onSaved={() => {
+          onSaved={(name) => {
             setShowSource(false);
+            setNotice(`Fuente «${name}» guardada.`);
             void reload();
           }}
           onCancel={() => setShowSource(false)}
@@ -99,8 +115,10 @@ export default function MarketPage() {
         <NewReferenceForm
           sources={sources}
           products={products}
+          presetProductId={presetProductId}
           onSaved={() => {
             setShowNew(false);
+            setNotice("Referencia guardada.");
             void reload();
           }}
           onCancel={() => setShowNew(false)}
@@ -132,7 +150,33 @@ export default function MarketPage() {
         <span className="muted">{references.length} referencias</span>
       </div>
 
-      {references.length === 0 ? (
+      {!loaded ? (
+        <p className="empty">Cargando…</p>
+      ) : loadFailed ? (
+        <div className="empty">
+          <p>No se pudieron cargar las referencias de mercado.</p>
+          <button type="button" className="primary" onClick={() => void reload()}>
+            Reintentar
+          </button>
+        </div>
+      ) : references.length === 0 && (search.trim() || onlyUnlinked) ? (
+        <div className="empty">
+          <p>
+            {search.trim()
+              ? `Ninguna referencia coincide con «${search.trim()}».`
+              : "Todas las referencias están asociadas a un producto."}
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setSearch("");
+              setOnlyUnlinked(false);
+            }}
+          >
+            Borrar búsqueda
+          </button>
+        </div>
+      ) : references.length === 0 ? (
         <p className="empty">No hay referencias registradas. Registra un precio observado o importa un CSV.</p>
       ) : (
         references.map((reference) => (
@@ -229,7 +273,7 @@ function LinkControl({
   );
 }
 
-function SourceForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () => void }) {
+function SourceForm({ onSaved, onCancel }: { onSaved: (name: string) => void; onCancel: () => void }) {
   const [name, setName] = useState("");
   const [sourceType, setSourceType] = useState<MarketSourceType>("LOCAL_STORE");
   const [scope, setScope] = useState<MarketScope>("PICHILEMU");
@@ -243,6 +287,10 @@ function SourceForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () =
       setError("El nombre de la fuente es obligatorio.");
       return;
     }
+    if (url.trim() && !/^https?:\/\/\S+\.\S+/i.test(url.trim())) {
+      setError("El sitio web debe ser una dirección completa, por ejemplo https://www.lider.cl");
+      return;
+    }
     try {
       await api.createSource({
         name: name.trim(),
@@ -251,7 +299,7 @@ function SourceForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () =
         locality: locality.trim() || null,
         url: url.trim() || null,
       });
-      onSaved();
+      onSaved(name.trim());
     } catch (err) {
       setError((err as Error).message);
     }
@@ -260,7 +308,7 @@ function SourceForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () =
   return (
     <form className="card" onSubmit={submit}>
       <h3>Nueva fuente (negocio, sitio o institución)</h3>
-      {error && <div className="alert danger">{error}</div>}
+      {error && <Alert kind="danger">{error}</Alert>}
       <div className="inline-form">
         <label className="field">
           Nombre
@@ -308,12 +356,14 @@ function SourceForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () =
 function NewReferenceForm({
   sources,
   products,
+  presetProductId,
   onSaved,
   onCancel,
   onNeedSource,
 }: {
   sources: MarketSource[];
   products: OverviewRow[];
+  presetProductId: string;
   onSaved: () => void;
   onCancel: () => void;
   onNeedSource: () => void;
@@ -336,6 +386,13 @@ function NewReferenceForm({
 
   const effectiveSourceId = sourceId || sources[0]?.id || "";
 
+  // Al llegar desde la ficha de un producto, se preselecciona y se completan sus datos.
+  const [presetApplied, setPresetApplied] = useState(false);
+  if (!presetApplied && presetProductId && products.some((p) => p.id === presetProductId)) {
+    setPresetApplied(true);
+    prefillFromProduct(presetProductId);
+  }
+
   function prefillFromProduct(id: string) {
     setProductId(id);
     const product = products.find((p) => p.id === id);
@@ -343,14 +400,13 @@ function NewReferenceForm({
       setProductName(product.name);
       setBrand(product.brand ?? "");
       setVariant(product.variant ?? "");
-      setContentAmount(product.content_amount ? String(Number(product.content_amount)) : "");
+      setContentAmount(toNumberInput(product.content_amount));
       setContentUnit(product.content_unit ?? "");
     }
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const numeric = Number(price.replace(/\./g, ""));
     if (!effectiveSourceId) {
       setError("Selecciona la fuente. Si no existe, créala con “Nueva fuente”.");
       return;
@@ -359,12 +415,29 @@ function NewReferenceForm({
       setError("Indica el producto observado.");
       return;
     }
-    if (!price.trim() || Number.isNaN(numeric) || numeric <= 0) {
-      setError("Ingresa el precio observado en pesos.");
+    let numeric: number;
+    let amount: string | null;
+    try {
+      numeric = Number(
+        readNumberField(price, "el precio observado", {
+          required: true,
+          integer: true,
+          positive: true,
+          max: MAX_PRICE_CLP,
+          example: "1.990",
+        }),
+      );
+      amount = readNumberField(contentAmount, "la presentación", { positive: true, example: "1,5" });
+    } catch (err) {
+      setError((err as Error).message);
       return;
     }
-    if ((contentAmount.trim() === "") !== (contentUnit === "")) {
+    if ((amount === null) !== (contentUnit === "")) {
       setError("Para la presentación indica cantidad y unidad, o deja ambos vacíos.");
+      return;
+    }
+    if (priceType === "PROMO" && validUntil && validUntil < observedOn) {
+      setError("La promoción no puede terminar antes de la fecha de observación.");
       return;
     }
     setBusy(true);
@@ -375,7 +448,7 @@ function NewReferenceForm({
         product_name: productName.trim(),
         brand: brand.trim() || null,
         variant: variant.trim() || null,
-        content_amount: parseDecimalInput(contentAmount),
+        content_amount: amount,
         content_unit: contentUnit || null,
         product_id: productId || null,
         match_type: productId ? matchType : null,
@@ -398,7 +471,7 @@ function NewReferenceForm({
   return (
     <form className="card" onSubmit={submit}>
       <h3>Registrar precio observado</h3>
-      {error && <div className="alert danger">{error}</div>}
+      {error && <Alert kind="danger">{error}</Alert>}
       <div className="form-grid">
         <label className="field">
           Negocio o fuente
@@ -454,7 +527,7 @@ function NewReferenceForm({
           <div style={{ display: "flex", gap: "0.4rem" }}>
             <input inputMode="decimal" value={contentAmount} onChange={(e) => setContentAmount(e.target.value)} placeholder="1,5" aria-label="Cantidad de la presentación" />
             <select value={contentUnit} onChange={(e) => setContentUnit(e.target.value as ContentUnit | "")} aria-label="Unidad de la presentación">
-              <option value="">unidad</option>
+              <option value="">—</option>
               {(Object.keys(CONTENT_UNIT_LABEL) as ContentUnit[]).map((unit) => (
                 <option key={unit} value={unit}>
                   {CONTENT_UNIT_LABEL[unit]}
@@ -465,7 +538,7 @@ function NewReferenceForm({
         </label>
         <label className="field">
           Precio observado (CLP)
-          <input inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value)} />
+          <input inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Ej.: 1.990" />
         </label>
         <label className="field">
           Tipo de precio
@@ -481,7 +554,7 @@ function NewReferenceForm({
         {priceType === "PROMO" && (
           <label className="field">
             Promoción válida hasta <span className="hint">si se conoce</span>
-            <input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
+            <input type="date" value={validUntil} min={observedOn} onChange={(e) => setValidUntil(e.target.value)} />
           </label>
         )}
         <label className="field wide">
@@ -501,18 +574,42 @@ function NewReferenceForm({
   );
 }
 
+const CSV_TEMPLATE =
+  "fuente;tipo_fuente;cobertura;localidad;producto;marca;variante;contenido;unidad_contenido;precio_clp;tipo_precio;promo_hasta;fecha_observacion;notas\n" +
+  "Almacén Don Pedro;Negocio local;Pichilemu;Pichilemu;Bebida cola;Coca-Cola;Original;1,5;L;2.290;Habitual;;27-10-2026;\n";
+
+function downloadTemplate() {
+  const blob = new Blob(["\ufeff" + CSV_TEMPLATE], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "plantilla-referencias-sim.csv";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 function ImportPanel({ onDone, onClose }: { onDone: () => void; onClose: () => void }) {
   const [csv, setCsv] = useState("");
+  const [fileName, setFileName] = useState("");
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
+  function changeCsv(text: string) {
+    setCsv(text);
+    // El resultado anterior ya no corresponde al contenido nuevo.
+    setResult(null);
+    setError("");
+  }
+
   async function readFile(file: File | undefined) {
     if (!file) return;
-    setCsv(await file.text());
+    setFileName(file.name);
+    changeCsv(await file.text());
   }
 
   async function submit() {
+    setResult(null);
     if (!csv.trim()) {
       setError("Pega el contenido del CSV o selecciona un archivo.");
       return;
@@ -533,17 +630,30 @@ function ImportPanel({ onDone, onClose }: { onDone: () => void; onClose: () => v
     <div className="card">
       <h3>Importar referencias desde CSV</h3>
       <p className="muted" style={{ marginTop: 0 }}>
-        Columnas obligatorias: fuente, tipo_fuente, cobertura, producto, precio_clp, tipo_precio,
-        fecha_observacion (AAAA-MM-DD). Opcionales: localidad, url_fuente, marca, variante, contenido,
+        Sirve una planilla de Excel guardada como CSV (con punto y coma o con coma). Columnas obligatorias:
+        fuente, tipo_fuente (Negocio local, Supermercado, Organismo público u Otra), cobertura (Pichilemu,
+        Región de O&apos;Higgins, Nacional o Web), producto, precio_clp, tipo_precio (Habitual o Promoción) y
+        fecha_observacion (27-10-2026). Opcionales: localidad, url_fuente, marca, variante, contenido,
         unidad_contenido, promo_desde, promo_hasta, url, notas. Las observaciones repetidas se omiten.
       </p>
-      {error && <div className="alert danger">{error}</div>}
-      <input type="file" accept=".csv,text/csv" onChange={(e) => void readFile(e.target.files?.[0])} />
+      <div className="actions" style={{ marginTop: 0 }}>
+        <button type="button" onClick={downloadTemplate}>
+          Descargar plantilla
+        </button>
+        <label className="button file-picker">
+          Elegir archivo…
+          <input type="file" accept=".csv,text/csv" onChange={(e) => void readFile(e.target.files?.[0])} />
+        </label>
+        <span className="muted" style={{ alignSelf: "center" }}>
+          {fileName ? `Archivo: ${fileName}` : "Ningún archivo elegido"}
+        </span>
+      </div>
+      {error && <Alert kind="danger">{error}</Alert>}
       <textarea
         aria-label="Contenido CSV"
         value={csv}
-        onChange={(e) => setCsv(e.target.value)}
-        placeholder="fuente,tipo_fuente,cobertura,producto,precio_clp,tipo_precio,fecha_observacion"
+        onChange={(e) => changeCsv(e.target.value)}
+        placeholder="fuente;tipo_fuente;cobertura;producto;precio_clp;tipo_precio;fecha_observacion"
         style={{ marginTop: "0.6rem" }}
       />
       <div className="actions">
@@ -555,7 +665,7 @@ function ImportPanel({ onDone, onClose }: { onDone: () => void; onClose: () => v
         </button>
       </div>
       {result && (
-        <div className={`alert ${result.errors.length ? "warn" : "ok"}`}>
+        <Alert kind={result.errors.length ? "warn" : "ok"}>
           Fuentes nuevas: {result.sources_created} · Referencias nuevas: {result.references_created} ·
           Precios registrados: {result.observations_created} · Repetidos omitidos: {result.duplicates_skipped}
           {result.errors.length > 0 && (
@@ -565,7 +675,7 @@ function ImportPanel({ onDone, onClose }: { onDone: () => void; onClose: () => v
               ))}
             </ul>
           )}
-        </div>
+        </Alert>
       )}
     </div>
   );
@@ -578,10 +688,11 @@ function StaleSettings({ value, onSaved }: { value: number | null; onSaved: (day
 
   if (value === null) return null;
 
-  async function save() {
-    const days = Number(draft);
-    if (!Number.isInteger(days) || days < 1) {
-      setError("Indica un número de días mayor que cero.");
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    const days = Number(draft.trim());
+    if (!Number.isInteger(days) || days < 1 || days > 3650) {
+      setError("Indica un número entero de días entre 1 y 3.650 (10 años).");
       return;
     }
     try {
@@ -594,42 +705,47 @@ function StaleSettings({ value, onSaved }: { value: number | null; onSaved: (day
     }
   }
 
+  if (editing) {
+    return (
+      <form className="card" onSubmit={save} noValidate>
+        <h3>Plazo para verificar precios de mercado</h3>
+        {error && <Alert kind="danger">{error}</Alert>}
+        <div className="inline-form">
+          <label className="field">
+            Marcar «Precio por verificar» después de (días)
+            <input inputMode="numeric" value={draft} onChange={(e) => setDraft(e.target.value)} autoFocus />
+          </label>
+          <button type="submit" className="primary">
+            Guardar plazo
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setEditing(false);
+              setError("");
+            }}
+          >
+            Cancelar
+          </button>
+        </div>
+      </form>
+    );
+  }
+
   return (
     <p className="muted">
       Una referencia se marca como “Precio por verificar” cuando su última observación tiene más de{" "}
-      {editing ? (
-        <>
-          <input
-            inputMode="numeric"
-            aria-label="Días para marcar una referencia por verificar"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            style={{ width: "5rem", display: "inline-block" }}
-          />{" "}
-          días{" "}
-          <button type="button" className="link" onClick={() => void save()}>
-            Guardar
-          </button>
-          <button type="button" className="link" onClick={() => setEditing(false)}>
-            Cancelar
-          </button>
-          {error && <span className="chip danger">{error}</span>}
-        </>
-      ) : (
-        <>
-          <strong>{value} días</strong>.{" "}
-          <button
-            type="button"
-            className="link"
-            onClick={() => {
-              setDraft(String(value));
-              setEditing(true);
-            }}
-          >
-            Cambiar plazo
-          </button>
-        </>
-      )}
+      <strong>{value} días</strong>.{" "}
+      <button
+        type="button"
+        className="link"
+        onClick={() => {
+          setDraft(String(value));
+          setEditing(true);
+        }}
+      >
+        Cambiar plazo
+      </button>
     </p>
   );
 }

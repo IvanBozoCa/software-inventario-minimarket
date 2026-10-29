@@ -196,29 +196,121 @@ export type ImportResult = {
   errors: string[];
 };
 
+// Nombres de campos de la API, para explicar los errores en palabras de la persona.
+const FIELD_LABEL: Record<string, string> = {
+  name: "El nombre",
+  product_name: "El nombre del producto",
+  barcode: "El código de barras",
+  brand: "La marca",
+  variant: "La variante",
+  content_amount: "El contenido",
+  content_unit: "La unidad del contenido",
+  sale_price_clp: "El precio de venta",
+  price_clp: "El precio",
+  last_unit_cost_clp: "El costo unitario",
+  extra_supply_cost_clp: "El costo adicional",
+  cost_source: "La fuente del costo",
+  min_margin: "El margen mínimo",
+  upper_margin: "El margen superior",
+  initial_quantity: "La cantidad inicial",
+  quantity: "La cantidad",
+  market_stale_days: "El plazo",
+  observed_on: "La fecha de observación",
+  promo_valid_until: "La fecha de término de la promoción",
+  note: "El motivo",
+  notes: "Las notas",
+  url: "El sitio web",
+  locality: "La localidad",
+  reason: "El motivo",
+};
+
+type ValidationItem = { msg?: string; type?: string; loc?: unknown[]; ctx?: Record<string, unknown> };
+
+const PERCENT_FIELDS = new Set(["min_margin", "upper_margin"]);
+
+function limit(field: string, value: unknown): string {
+  const numeric = Number(value);
+  if (PERCENT_FIELDS.has(field)) return `${(numeric * 100).toLocaleString("es-CL")} %`;
+  return numeric.toLocaleString("es-CL");
+}
+
+/** Traduce un error de validación de la API (en inglés) a una frase en español. */
+export function describeValidationError(item: ValidationItem): string {
+  const loc = Array.isArray(item.loc) ? item.loc.map(String) : [];
+  const field = loc[loc.length - 1] ?? "";
+  const label = FIELD_LABEL[field];
+  const ctx = item.ctx ?? {};
+  const msg = (item.msg ?? "").replace(/^Value error, /, "");
+  if (loc[0] === "path" || loc[0] === "query") {
+    if (item.type === "uuid_parsing") return "La dirección no corresponde a un registro válido.";
+  }
+  if (!label) {
+    // Mensajes propios de la API (ya en español), p. ej. de validaciones del modelo.
+    return /[áéíóúñ]|\b(el|la|no|debe)\b/i.test(msg) ? msg : "Revisa los datos ingresados.";
+  }
+  switch (item.type) {
+    case "less_than":
+      return `${label} debe ser menor que ${limit(field, ctx.lt)}.`;
+    case "less_than_equal":
+      return `${label} debe ser como máximo ${limit(field, ctx.le)}.`;
+    case "greater_than":
+      return `${label} debe ser mayor que ${limit(field, ctx.gt)}.`;
+    case "greater_than_equal":
+      return Number(ctx.ge) === 0 ? `${label} no puede ser negativo.` : `${label} debe ser al menos ${limit(field, ctx.ge)}.`;
+    case "string_too_long":
+      return `${label} puede tener como máximo ${ctx.max_length} caracteres.`;
+    case "string_too_short":
+    case "missing":
+      return `${label} es obligatorio.`;
+    case "decimal_max_places":
+      return `${label} tiene demasiados decimales.`;
+    case "decimal_max_digits":
+    case "decimal_whole_digits":
+      return `${label} es demasiado grande; revisa que no sobre un dígito.`;
+    case "int_parsing":
+    case "int_from_float":
+    case "decimal_parsing":
+    case "float_parsing":
+      return `${label} debe ser un número.`;
+    case "date_from_datetime_parsing":
+    case "date_parsing":
+      return `${label} no es una fecha válida.`;
+    default:
+      return /[áéíóúñ]|\b(el|la|no|debe)\b/i.test(msg) ? msg : `${label} no es válido.`;
+  }
+}
+
 async function readError(response: Response): Promise<string> {
   try {
     const body = await response.json();
     if (typeof body.detail === "string") return body.detail;
     if (Array.isArray(body.detail)) {
-      return body.detail
-        .map((item: { msg?: string; loc?: unknown[] }) => {
-          const field = Array.isArray(item.loc) ? String(item.loc[item.loc.length - 1]) : "";
-          const msg = (item.msg ?? "").replace(/^Value error, /, "");
-          return field ? `${field}: ${msg}` : msg;
-        })
-        .join(" · ");
+      return [...new Set(body.detail.map((item: ValidationItem) => describeValidationError(item)))].join(" ");
     }
   } catch {
     // sin cuerpo legible
   }
+  if (response.status >= 500) {
+    return "El servidor de SIM tuvo un problema y no guardó el cambio. Inténtalo de nuevo en un momento.";
+  }
   return "No fue posible completar la acción";
+}
+
+/** La petición no llegó al servidor (sin Internet o servidor caído). */
+export class NetworkError extends Error {
+  constructor() {
+    super("No se pudo conectar con SIM. Si estabas guardando, el cambio no se guardó: revisa tu conexión e inténtalo de nuevo.");
+  }
 }
 
 // Token de acceso para la instalación publicada en Internet. En el equipo
 // local el backend no exige contraseña y el token queda vacío.
 const TOKEN_KEY = "sim.accessToken";
 export const UNAUTHORIZED_EVENT = "sim:unauthorized";
+// Se emiten cuando una petición falla por red o vuelve a responder, para que la
+// cabecera no diga "Conectado" mientras el servidor no responde.
+export const OFFLINE_EVENT = "sim:offline";
+export const ONLINE_EVENT = "sim:online";
 
 export function getAccessToken(): string | null {
   try {
@@ -243,10 +335,17 @@ function authHeaders(): Record<string, string> {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...authHeaders(), ...(init?.headers ?? {}) },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...authHeaders(), ...(init?.headers ?? {}) },
+    });
+  } catch {
+    window.dispatchEvent(new Event(OFFLINE_EVENT));
+    throw new NetworkError();
+  }
+  window.dispatchEvent(new Event(ONLINE_EVENT));
   if (response.status === 401 && path !== "/auth/login") {
     window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
   }
@@ -340,6 +439,11 @@ export const api = {
     }),
   addObservation: (referenceId: string, body: Record<string, unknown>) =>
     request<MarketReference>(`/market/references/${referenceId}/observations`, {
+      method: "POST",
+      body: json(body),
+    }),
+  correctObservation: (id: string, body: Record<string, unknown>) =>
+    request<MarketReference>(`/market/observations/${id}/correct`, {
       method: "POST",
       body: json(body),
     }),

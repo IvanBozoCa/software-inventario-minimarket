@@ -423,7 +423,7 @@ export default function ProductFormPage({
             <input value={form.variant} onChange={(event) => update("variant", event.target.value)} placeholder="Ej.: Sin azúcar" />
           </label>
           <label className="field">
-            Contenido <span className="hint">opcional, ayuda a comparar con el mercado</span>
+            Contenido <span className="hint">opcional</span>
             <div style={{ display: "flex", gap: "0.4rem" }}>
               <input
                 {...fieldProps("content_amount")}
@@ -447,6 +447,7 @@ export default function ProductFormPage({
               </select>
             </div>
             {fieldError("content_amount")}
+            <span className="hint">Ayuda a comparar con el mercado.</span>
           </label>
           <label className="field">
             Código de barras <span className="hint">opcional</span>
@@ -518,7 +519,7 @@ export default function ProductFormPage({
 
         <fieldset>
           <legend>Precio y costo</legend>
-          <div className="form-grid">
+          <div className="form-grid cols-2">
             <label className="field">
               <span>
                 Precio de venta actual (CLP) {!editing && <span className="required">(obligatorio)</span>}

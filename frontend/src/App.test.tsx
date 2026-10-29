@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
@@ -217,8 +217,10 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByText("Bebida cola")).toBeInTheDocument();
-    expect(screen.getByText("Costo pendiente")).toBeInTheDocument();
-    expect(screen.getByText("Sin referencias")).toBeInTheDocument();
+    const table = screen.getByRole("table");
+    expect(within(table).getByText("Costo pendiente")).toBeInTheDocument();
+    expect(within(table).getByText("Sin referencias")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Costo pendiente (1)" })).toBeInTheDocument();
     expect(screen.getByText(/2\.200/)).toBeInTheDocument();
     expect(screen.getByText("Conectado")).toBeInTheDocument();
   });

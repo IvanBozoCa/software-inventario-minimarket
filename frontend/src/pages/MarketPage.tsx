@@ -733,7 +733,7 @@ function StaleSettings({ value, onSaved }: { value: number | null; onSaved: (day
   }
 
   return (
-    <p className="muted">
+    <p className="muted stale-note">
       Una referencia se marca como “Precio por verificar” cuando su última observación tiene más de{" "}
       <strong>{value} días</strong>.{" "}
       <button

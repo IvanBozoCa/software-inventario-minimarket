@@ -213,17 +213,27 @@ export default function InventoryPage() {
         </label>
       </div>
 
-      <div className="chips" style={{ marginBottom: "1rem" }}>
-        <FilterChip label={`Todos (${rows.length})`} value="all" current={filter} onSelect={setFilter} />
+      <div className="filter-tabs" role="group" aria-label="Filtrar por estado">
+        <FilterChip label="Todos" count={rows.length} value="all" current={filter} onSelect={setFilter} />
         <FilterChip
-          label={`Precio por revisar (${counts.review})`}
+          label="Precio por revisar"
+          count={counts.review}
+          tone="danger"
           value="review"
           current={filter}
           onSelect={setFilter}
         />
-        <FilterChip label={`Costo pendiente (${counts.cost})`} value="cost" current={filter} onSelect={setFilter} />
         <FilterChip
-          label={`Sin referencias de mercado (${counts.market})`}
+          label="Costo pendiente"
+          count={counts.cost}
+          tone="warn"
+          value="cost"
+          current={filter}
+          onSelect={setFilter}
+        />
+        <FilterChip
+          label="Sin referencias de mercado"
+          count={counts.market}
           value="market"
           current={filter}
           onSelect={setFilter}
@@ -281,7 +291,7 @@ export default function InventoryPage() {
             </button>
           </div>
         ) : (
-          <table className="cards">
+          <table className="cards compact-cards inventory-table">
             <thead>
               <tr>
                 {sortHeader("Producto", "name")}
@@ -322,7 +332,7 @@ export default function InventoryPage() {
                         <span className="chip warn">Márgenes sin definir</span>
                       )}
                       {row.market_reference_count === 0 ? (
-                        <span className="chip">Sin referencias</span>
+                        <span className="chip subtle">Sin referencias</span>
                       ) : row.market_references_stale ? (
                         <span className="chip warn">Referencia por verificar</span>
                       ) : (
@@ -342,11 +352,15 @@ export default function InventoryPage() {
 
 function FilterChip({
   label,
+  count,
+  tone,
   value,
   current,
   onSelect,
 }: {
   label: string;
+  count: number;
+  tone?: "danger" | "warn";
   value: Filter;
   current: Filter;
   onSelect: (value: Filter) => void;
@@ -354,11 +368,14 @@ function FilterChip({
   return (
     <button
       type="button"
-      className={`chip ${current === value ? "info" : ""}`}
       aria-pressed={current === value}
+      aria-label={`${label} (${count})`}
       onClick={() => onSelect(value)}
     >
       {label}
+      <span className={`count ${count > 0 && tone ? tone : ""}`} aria-hidden="true">
+        {count}
+      </span>
     </button>
   );
 }

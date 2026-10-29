@@ -671,3 +671,72 @@ th button.sort {
     color: var(--text-h);
   }
 }
+
+/* Escáner de código de barras / QR */
+.scanner-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.scanner-card {
+  width: 100%;
+  max-width: 480px;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  margin: 0;
+}
+
+.scanner-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.scanner-head h3 {
+  margin: 0;
+}
+
+.scanner-view {
+  position: relative;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #000;
+  aspect-ratio: 4 / 3;
+}
+
+.scanner-view.hidden {
+  display: none;
+}
+
+.scanner-view video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.scanner-frame {
+  position: absolute;
+  inset: 22% 10%;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  border-radius: 8px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+}
+
+.input-with-action {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.input-with-action button {
+  white-space: nowrap;
+}

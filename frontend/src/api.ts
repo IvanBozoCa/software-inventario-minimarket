@@ -303,6 +303,16 @@ export class NetworkError extends Error {
   }
 }
 
+/** El servidor respondió con un error; `status` es el código HTTP. */
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
 // Token de acceso para la instalación publicada en Internet. En el equipo
 // local el backend no exige contraseña y el token queda vacío.
 const TOKEN_KEY = "sim.accessToken";
@@ -350,7 +360,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
   }
   if (!response.ok) {
-    throw new Error(await readError(response));
+    throw new ApiError(await readError(response), response.status);
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
@@ -394,6 +404,8 @@ export const api = {
     return request<OverviewRow[]>(`/products/overview?${query.toString()}`);
   },
   product: (id: string) => request<Product>(`/products/${id}`),
+  productByBarcode: (code: string) =>
+    request<Product>(`/products/by-barcode?code=${encodeURIComponent(code)}`),
   productDetail: (id: string) => request<ProductDetail>(`/products/${id}/detail`),
   createProduct: (body: Record<string, unknown>) =>
     request<Product>("/products", { method: "POST", body: json(body) }),

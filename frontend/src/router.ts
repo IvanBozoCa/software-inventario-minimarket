@@ -1,15 +1,19 @@
 export type Route =
   | { page: "inventory" }
-  | { page: "product-new" }
+  | { page: "product-new"; barcode?: string }
   | { page: "product-edit"; id: string }
   | { page: "product"; id: string }
   | { page: "categories" }
   | { page: "market" };
 
 export function parseRoute(hash: string): Route {
-  const path = hash.replace(/^#\/?/, "").split("?")[0];
+  const [path, query = ""] = hash.replace(/^#\/?/, "").split("?");
   const [head, second, third] = path.split("/");
-  if (head === "productos" && second === "nuevo") return { page: "product-new" };
+  if (head === "productos" && second === "nuevo") {
+    // Código leído con el escáner (#/productos/nuevo?codigo=…).
+    const barcode = new URLSearchParams(query).get("codigo")?.trim();
+    return barcode ? { page: "product-new", barcode } : { page: "product-new" };
+  }
   if (head === "productos" && second && third === "editar") return { page: "product-edit", id: second };
   if (head === "productos" && second) return { page: "product", id: second };
   if (head === "categorias") return { page: "categories" };

@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { navigate, setFlash } from "../router";
 import { api } from "../api";
-import type { Category, ContentUnit, OverviewRow, StockUnit } from "../api";
+import type { Category, ContentUnit, OverviewRow, Product, StockUnit } from "../api";
 import { Alert } from "../components/Alert";
+import BarcodeScanner from "../components/BarcodeScanner";
+import { findProductByCode } from "../scanner";
 import {
   CONTENT_UNIT_LABEL,
   MAX_PRICE_CLP,
@@ -60,10 +62,20 @@ const EMPTY: FormState = {
 
 const NAME_MAX = 200;
 
-export default function ProductFormPage({ productId }: { productId?: string }) {
+export default function ProductFormPage({
+  productId,
+  initialBarcode,
+}: {
+  productId?: string;
+  initialBarcode?: string;
+}) {
   const editing = Boolean(productId);
-  const [form, setForm] = useState<FormState>(EMPTY);
-  const [initial, setInitial] = useState<FormState>(EMPTY);
+  // Con un código escaneado desde el inventario el formulario parte con él.
+  const [start] = useState<FormState>(() => ({ ...EMPTY, barcode: initialBarcode ?? "" }));
+  const [form, setForm] = useState<FormState>(start);
+  const [initial, setInitial] = useState<FormState>(start);
+  const [scanning, setScanning] = useState(false);
+  const [barcodeOwner, setBarcodeOwner] = useState<Product | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<Field, string>>>({});
@@ -119,6 +131,18 @@ export default function ProductFormPage({ productId }: { productId?: string }) {
     setFieldErrors((current) => ({ ...current, [key]: undefined }));
     setPendingWarning(null);
     setAcknowledged([]);
+  }
+
+  async function applyScanned(code: string) {
+    setScanning(false);
+    update("barcode", code);
+    setBarcodeOwner(null);
+    try {
+      const existing = await findProductByCode(code);
+      if (existing && existing.id !== productId) setBarcodeOwner(existing);
+    } catch {
+      // si la búsqueda falla, el backend igual rechaza códigos repetidos al guardar
+    }
   }
 
   function failField(field: Field, message: string) {
@@ -324,6 +348,14 @@ export default function ProductFormPage({ productId }: { productId?: string }) {
         </div>
       </div>
 
+      {scanning && (
+        <BarcodeScanner
+          title="Escanear código del producto"
+          onDetected={applyScanned}
+          onClose={() => setScanning(false)}
+        />
+      )}
+
       <form onSubmit={submit} className="card" noValidate ref={formRef}>
         {error && <Alert kind="danger">{error}</Alert>}
         {pendingWarning && (
@@ -418,7 +450,29 @@ export default function ProductFormPage({ productId }: { productId?: string }) {
           </label>
           <label className="field">
             Código de barras <span className="hint">opcional</span>
-            <input inputMode="numeric" value={form.barcode} onChange={(event) => update("barcode", event.target.value)} />
+            <div className="input-with-action">
+              <input
+                name="barcode"
+                inputMode="numeric"
+                aria-label="Código de barras"
+                value={form.barcode}
+                onChange={(event) => {
+                  update("barcode", event.target.value);
+                  setBarcodeOwner(null);
+                }}
+              />
+              <button type="button" onClick={() => setScanning(true)}>
+                Escanear
+              </button>
+            </div>
+            <span className="hint">Con la cámara o una foto; también sirve un código QR.</span>
+            {barcodeOwner && (
+              <Alert kind="warn">
+                Ese código ya pertenece a <strong>{barcodeOwner.name}</strong>
+                {barcodeOwner.active ? "" : " (inactivo)"}.{" "}
+                <a href={`#/productos/${barcodeOwner.id}`}>Abrir su ficha</a>
+              </Alert>
+            )}
           </label>
         </div>
 

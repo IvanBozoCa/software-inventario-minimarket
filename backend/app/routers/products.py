@@ -29,7 +29,9 @@ from app.schemas.product import (
 )
 from app.services.catalog import (
     CatalogError,
+    cost_histories,
     cost_history,
+    price_histories,
     price_history,
     record_cost_change,
     record_initial_values,
@@ -198,6 +200,8 @@ def products_overview(
     stock = stock_by_product(db, ids)
     stale_days = get_stale_days(db)
     market_counts = reference_counts_by_product(db, ids, stale_days=stale_days, on=today())
+    costs = cost_histories(db, ids)
+    prices = price_histories(db, ids)
 
     rows: list[ProductOverviewRow] = []
     for product in products:
@@ -205,8 +209,8 @@ def products_overview(
         analysis = analyze_product(
             product,
             category,
-            cost_changes=cost_history(db, product.id),
-            price_changes=price_history(db, product.id),
+            cost_changes=costs[product.id],
+            price_changes=prices[product.id],
         )
         count, refs_stale = market_counts.get(product.id, (0, False))
         codes = {warning.code for warning in analysis.warnings}

@@ -194,6 +194,34 @@ def cost_history(db: Session, product_id: UUID) -> list[ProductCostChange]:
     )
 
 
+def cost_histories(db: Session, product_ids: list[UUID]) -> dict[UUID, list[ProductCostChange]]:
+    """Historial de costos de varios productos en una sola consulta."""
+    result: dict[UUID, list[ProductCostChange]] = {product_id: [] for product_id in product_ids}
+    if not product_ids:
+        return result
+    for change in db.scalars(
+        select(ProductCostChange)
+        .where(ProductCostChange.product_id.in_(product_ids))
+        .order_by(ProductCostChange.changed_at)
+    ).all():
+        result[change.product_id].append(change)
+    return result
+
+
+def price_histories(db: Session, product_ids: list[UUID]) -> dict[UUID, list[ProductPriceChange]]:
+    """Historial de precios de varios productos en una sola consulta."""
+    result: dict[UUID, list[ProductPriceChange]] = {product_id: [] for product_id in product_ids}
+    if not product_ids:
+        return result
+    for change in db.scalars(
+        select(ProductPriceChange)
+        .where(ProductPriceChange.product_id.in_(product_ids))
+        .order_by(ProductPriceChange.changed_at)
+    ).all():
+        result[change.product_id].append(change)
+    return result
+
+
 def price_history(db: Session, product_id: UUID) -> list[ProductPriceChange]:
     return list(
         db.scalars(

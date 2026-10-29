@@ -388,3 +388,29 @@ def test_csv_import_is_idempotent_and_reports_errors(client):
     assert len(references) == 1
     assert references[0]["source"]["scope"] == "WEB"
     assert len(references[0]["observations"]) == 2
+
+
+def test_overview_query_count_does_not_grow_with_products(client):
+    from sqlalchemy import event
+    from sqlalchemy.engine import Engine
+
+    def count_queries():
+        statements = []
+
+        def listener(*args):
+            statements.append(args[2])
+
+        event.listen(Engine, "before_cursor_execute", listener)
+        try:
+            response = client.get("/products/overview")
+        finally:
+            event.remove(Engine, "before_cursor_execute", listener)
+        assert response.status_code == 200, response.text
+        return len(statements)
+
+    for index in range(3):
+        _product(client, name=f"Producto {index}", initial_quantity="2")
+    few = count_queries()
+    for index in range(3, 12):
+        _product(client, name=f"Producto {index}", last_unit_cost_clp="500")
+    assert count_queries() == few

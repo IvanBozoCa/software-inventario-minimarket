@@ -64,6 +64,7 @@ cd backend
 export MINIMARKET_DATABASE_URL="postgresql+psycopg://postgres.<ref>:<clave>@<host-pooler>:5432/postgres"  # session pooler
 export SIM_DB_SCHEMA=sim
 alembic upgrade head
+python scripts/seed_categories.py          # opcional
 python scripts/seed_market_references.py   # opcional
 ```
 

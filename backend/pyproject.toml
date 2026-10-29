@@ -3,6 +3,19 @@ name = "sim-backend"
 version = "0.1.0"
 description = "SIM — API de inventario y gestión de precios para minimarket"
 requires-python = ">=3.12"
+# Vercel instala las dependencias desde esta lista (ignora requirements.txt
+# cuando existe pyproject.toml). Mantener alineada con requirements.txt.
+dependencies = [
+    "fastapi==0.141.1",
+    "SQLAlchemy==2.0.53",
+    "alembic==1.20.0",
+    "pydantic==2.13.5",
+    "pydantic-settings==2.15.0",
+    "python-dotenv==1.2.3",
+    "psycopg==3.3.3",
+    "psycopg-binary==3.3.3",
+    "uvicorn==0.53.0",
+]
 
 # Vercel (framework FastAPI): instancia `app` en app/main.py.
 [tool.vercel]

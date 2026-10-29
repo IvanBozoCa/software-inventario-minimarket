@@ -15,7 +15,7 @@ from app.services.access import (
     access_required,
     bearer_token,
     is_public_path,
-    token_expiry,
+    session_expiry,
 )
 
 app = FastAPI(
@@ -26,12 +26,12 @@ app = FastAPI(
 
 @app.middleware("http")
 async def require_access_token(request: Request, call_next):
-    """Exige el token de acceso cuando hay contraseña configurada."""
+    """Exige una sesión válida cuando el acceso está protegido."""
     if (
         access_required()
         and request.method != "OPTIONS"
         and not is_public_path(request.url.path)
-        and token_expiry(bearer_token(request.headers.get("authorization")) or "") is None
+        and session_expiry(bearer_token(request.headers.get("authorization")) or "") is None
     ):
         return JSONResponse(
             status_code=401,

@@ -259,7 +259,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 const json = (body: unknown) => JSON.stringify(body);
 
-export type AccessStatus = { required: boolean; authenticated: boolean; expires_at: string | null };
+export type AuthMode = "none" | "password" | "supabase";
+
+export type AccessStatus = {
+  required: boolean;
+  authenticated: boolean;
+  expires_at: string | null;
+  mode?: AuthMode;
+  supabase_url?: string | null;
+  supabase_anon_key?: string | null;
+  email?: string | null;
+};
 
 export const api = {
   health: () => request<{ status: string }>("/health"),

@@ -44,7 +44,9 @@ def test_without_password_everything_is_open(client, monkeypatch):
 
     status = client.get("/auth/status").json()
 
-    assert status == {"required": False, "authenticated": True, "expires_at": None}
+    assert status["required"] is False
+    assert status["authenticated"] is True
+    assert status["mode"] == "none"
     assert client.get("/categories").status_code == 200
     assert client.post("/auth/login", json={"password": "x"}).status_code == 409
 

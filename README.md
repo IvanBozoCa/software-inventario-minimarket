@@ -66,15 +66,16 @@ Si el backend corre en otra dirección, define `VITE_API_BASE` (por defecto
 
 ### Publicación en Internet (opcional)
 
-SIM puede publicarse en Vercel con Postgres de Supabase y acceso con
-contraseña única (`SIM_ACCESS_PASSWORD`). Variables, migraciones y pasos en
+SIM puede publicarse en Vercel con Postgres de Supabase y acceso por enlace
+mágico al correo del administrador (Supabase Auth) o, como alternativa, con
+contraseña única. Variables, migraciones y pasos en
 [`docs/despliegue.md`](docs/despliegue.md). En el equipo local nada cambia:
-sin contraseña y con SQLite.
+sin acceso restringido y con SQLite.
 
 ## Pruebas
 
 ```bash
-# Backend (94 pruebas): modelos, cálculos de rentabilidad, historial, referencias, acceso
+# Backend (105 pruebas): modelos, cálculos de rentabilidad, historial, referencias, acceso
 cd backend && .venv/bin/python -m pytest        # Windows: .venv\Scripts\python -m pytest
 
 # Frontend unitarias (Vitest)

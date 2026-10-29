@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.product import ContentUnit, PriceMode, SaleMode, StockUnit
+from app.schemas.limits import MAX_PRICE_CLP
 
 
 def _clean_optional_text(value: str | None) -> str | None:
@@ -37,7 +38,7 @@ class ProductCreate(BaseModel):
     category_id: UUID | None = None
     sale_mode: SaleMode = SaleMode.UNIT
     price_mode: PriceMode = PriceMode.FIXED
-    sale_price_clp: int | None = Field(default=None, ge=0)
+    sale_price_clp: int | None = Field(default=None, ge=0, le=MAX_PRICE_CLP)
     track_stock: bool = True
     track_expiration: bool = False
     is_returnable: bool = False
@@ -92,7 +93,7 @@ class ProductUpdate(BaseModel):
     category_id: UUID | None = None
     sale_mode: SaleMode | None = None
     price_mode: PriceMode | None = None
-    sale_price_clp: int | None = Field(default=None, ge=0)
+    sale_price_clp: int | None = Field(default=None, ge=0, le=MAX_PRICE_CLP)
     track_stock: bool | None = None
     track_expiration: bool | None = None
     is_returnable: bool | None = None
@@ -172,7 +173,7 @@ class ProductCostUpdate(BaseModel):
 
 
 class ProductPriceUpdate(BaseModel):
-    sale_price_clp: int = Field(ge=0)
+    sale_price_clp: int = Field(ge=0, le=MAX_PRICE_CLP)
     note: str | None = Field(default=None, max_length=500)
 
     @field_validator("note")

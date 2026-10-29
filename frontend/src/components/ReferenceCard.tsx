@@ -1,43 +1,64 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../api";
-import type { MarketReference, PriceType } from "../api";
-import { SCOPE_LABEL, formatClp, formatContent, formatDate, todayIso } from "../format";
+import type { MarketReference, Observation, PriceType } from "../api";
+import { Alert } from "./Alert";
+import { MAX_PRICE_CLP, SCOPE_LABEL, foldText, formatClp, formatContent, formatDate, readNumberField, todayIso } from "../format";
 
 export function ObservationForm({
   referenceId,
+  correcting,
   onSaved,
   onCancel,
 }: {
   referenceId: string;
+  /** Observación que se corrige: la original queda inválida y enlazada a la nueva. */
+  correcting?: Observation;
   onSaved: (reference: MarketReference) => void;
   onCancel?: () => void;
 }) {
-  const [price, setPrice] = useState("");
-  const [priceType, setPriceType] = useState<PriceType>("REGULAR");
-  const [observedOn, setObservedOn] = useState(todayIso());
-  const [validUntil, setValidUntil] = useState("");
-  const [notes, setNotes] = useState("");
+  const [price, setPrice] = useState(correcting ? String(correcting.price_clp) : "");
+  const [priceType, setPriceType] = useState<PriceType>(correcting?.price_type ?? "REGULAR");
+  const [observedOn, setObservedOn] = useState(correcting?.observed_on ?? todayIso());
+  const [validUntil, setValidUntil] = useState(correcting?.promo_valid_until ?? "");
+  const [notes, setNotes] = useState(correcting?.notes ?? "");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const numeric = Number(price.replace(/\./g, ""));
-    if (!price.trim() || Number.isNaN(numeric) || numeric <= 0) {
-      setError("Ingresa el precio observado en pesos.");
+    let numeric: number;
+    try {
+      numeric = Number(
+        readNumberField(price, "el precio observado", {
+          required: true,
+          integer: true,
+          positive: true,
+          max: MAX_PRICE_CLP,
+          example: "1.990",
+        }),
+      );
+    } catch (err) {
+      setError((err as Error).message);
+      return;
+    }
+    if (priceType === "PROMO" && validUntil && validUntil < observedOn) {
+      setError("La promoción no puede terminar antes de la fecha de observación.");
       return;
     }
     setBusy(true);
     setError("");
     try {
-      const updated = await api.addObservation(referenceId, {
-        price_clp: Math.round(numeric),
+      const body = {
+        price_clp: numeric,
         price_type: priceType,
         observed_on: observedOn,
         promo_valid_until: priceType === "PROMO" && validUntil ? validUntil : null,
         notes: notes.trim() || null,
-      });
+      };
+      const updated = correcting
+        ? await api.correctObservation(correcting.id, body)
+        : await api.addObservation(referenceId, body);
       setPrice("");
       setNotes("");
       onSaved(updated);
@@ -52,7 +73,7 @@ export function ObservationForm({
     <form onSubmit={submit} className="inline-form" style={{ marginTop: "0.6rem" }}>
       <label className="field">
         Precio observado (CLP)
-        <input inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value)} />
+        <input inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Ej.: 1.990" autoFocus />
       </label>
       <label className="field">
         Tipo
@@ -68,7 +89,7 @@ export function ObservationForm({
       {priceType === "PROMO" && (
         <label className="field">
           Promoción válida hasta <span className="hint">si se conoce</span>
-          <input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
+          <input type="date" value={validUntil} min={observedOn} onChange={(e) => setValidUntil(e.target.value)} />
         </label>
       )}
       <label className="field">
@@ -76,14 +97,18 @@ export function ObservationForm({
         <input value={notes} onChange={(e) => setNotes(e.target.value)} />
       </label>
       <button type="submit" className="primary" disabled={busy}>
-        Registrar precio
+        {correcting ? "Guardar corrección" : "Registrar precio"}
       </button>
       {onCancel && (
         <button type="button" onClick={onCancel}>
           Cancelar
         </button>
       )}
-      {error && <div className="alert danger" style={{ width: "100%" }}>{error}</div>}
+      {error && (
+        <Alert kind="danger" style={{ width: "100%" }}>
+          {error}
+        </Alert>
+      )}
     </form>
   );
 }
@@ -100,21 +125,36 @@ export function ReferenceCard({
   const [adding, setAdding] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [error, setError] = useState("");
+  const [invalidating, setInvalidating] = useState<Observation | null>(null);
+  const [correcting, setCorrecting] = useState<Observation | null>(null);
+  const [reason, setReason] = useState("");
 
   const observations = showAll
     ? reference.observations
     : reference.observations.filter((o) => o.status === "VALID").slice(0, 4);
   const hiddenCount = reference.observations.length - observations.length;
 
-  async function invalidate(observationId: string) {
-    const reason = window.prompt("Motivo para marcar este precio como inválido:");
-    if (!reason || !reason.trim()) return;
+  async function invalidate(event: FormEvent) {
+    event.preventDefault();
+    if (!invalidating) return;
+    if (!reason.trim()) {
+      setError("Escribe el motivo, por ejemplo «precio mal tipeado».");
+      return;
+    }
     try {
-      onChanged(await api.invalidateObservation(observationId, reason.trim()));
+      onChanged(await api.invalidateObservation(invalidating.id, reason.trim()));
+      setInvalidating(null);
+      setReason("");
+      setError("");
     } catch (err) {
       setError((err as Error).message);
     }
   }
+
+  const hasInvalid = reference.observations.some((o) => o.status === "INVALID");
+  const scopeLabel = SCOPE_LABEL[reference.source.scope];
+  const showLocality =
+    reference.source.locality && foldText(reference.source.locality) !== foldText(scopeLabel);
 
   return (
     <div className="card">
@@ -127,15 +167,15 @@ export function ReferenceCard({
               .join(" · ") || "Sin marca ni presentación registradas"}
           </span>
           <span className="sub">
-            {reference.source.name} · {SCOPE_LABEL[reference.source.scope]}
-            {reference.source.locality ? ` · ${reference.source.locality}` : ""}
+            {reference.source.name} · {scopeLabel}
+            {showLocality ? ` · ${reference.source.locality}` : ""}
           </span>
         </div>
         <div className="chips">
           {reference.match_type === "EXACT" && <span className="chip ok">Mismo producto</span>}
           {reference.match_type === "EQUIVALENT" && <span className="chip info">Producto equivalente</span>}
           {reference.last_observed_on === null ? (
-            <span className="chip">Sin precios registrados</span>
+            <span className="chip">{hasInvalid ? "Último precio invalidado" : "Sin precios registrados"}</span>
           ) : reference.stale ? (
             <span className="chip warn">Precio por verificar</span>
           ) : (
@@ -145,11 +185,11 @@ export function ReferenceCard({
         </div>
       </div>
 
-      {error && <div className="alert danger">{error}</div>}
+      {error && <Alert kind="danger">{error}</Alert>}
 
       {observations.length > 0 && (
         <div className="table-wrap">
-          <table>
+          <table className="cards">
             <thead>
               <tr>
                 <th>Fecha</th>
@@ -164,15 +204,15 @@ export function ReferenceCard({
             <tbody>
               {observations.map((observation) => (
                 <tr key={observation.id} className={observation.status === "INVALID" ? "inactive" : ""}>
-                  <td>{formatDate(observation.observed_on)}</td>
-                  <td>
+                  <td data-label="Fecha">{formatDate(observation.observed_on)}</td>
+                  <td data-label="Tipo">
                     {observation.price_type === "PROMO" ? "Promoción" : "Habitual"}
                     {observation.promo_valid_until && (
                       <span className="sub">hasta {formatDate(observation.promo_valid_until)}</span>
                     )}
                   </td>
-                  <td className="num">{formatClp(observation.price_clp)}</td>
-                  <td className="num">
+                  <td className="num price">{formatClp(observation.price_clp)}</td>
+                  <td className="num" data-label="Por unidad">
                     {observation.unit_price_clp
                       ? `${formatClp(observation.unit_price_clp)} / ${observation.unit_price_label}`
                       : "—"}
@@ -203,9 +243,30 @@ export function ReferenceCard({
                   </td>
                   <td>
                     {observation.status === "VALID" && (
-                      <button type="button" className="link" onClick={() => void invalidate(observation.id)}>
-                        Marcar inválido
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          className="link"
+                          onClick={() => {
+                            setCorrecting(observation);
+                            setInvalidating(null);
+                            setAdding(false);
+                          }}
+                        >
+                          Corregir precio
+                        </button>
+                        <button
+                          type="button"
+                          className="link"
+                          onClick={() => {
+                            setInvalidating(observation);
+                            setCorrecting(null);
+                            setReason("");
+                          }}
+                        >
+                          Marcar inválido
+                        </button>
+                      </>
                     )}
                   </td>
                 </tr>
@@ -238,6 +299,31 @@ export function ReferenceCard({
         )}
         {actions}
       </div>
+      {invalidating && (
+        <form className="inline-form" style={{ marginTop: "0.6rem" }} onSubmit={invalidate}>
+          <label className="field">
+            Motivo para marcar inválido el precio de {formatClp(invalidating.price_clp)} ({formatDate(invalidating.observed_on)})
+            <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ej.: precio mal tipeado" autoFocus />
+          </label>
+          <button type="submit" className="danger">
+            Marcar inválido
+          </button>
+          <button type="button" onClick={() => setInvalidating(null)}>
+            Cancelar
+          </button>
+        </form>
+      )}
+      {correcting && (
+        <ObservationForm
+          referenceId={reference.id}
+          correcting={correcting}
+          onSaved={(updated) => {
+            setCorrecting(null);
+            onChanged(updated);
+          }}
+          onCancel={() => setCorrecting(null)}
+        />
+      )}
       {adding && (
         <ObservationForm
           referenceId={reference.id}

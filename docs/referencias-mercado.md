@@ -55,22 +55,22 @@ aparecerá como "pendiente de referencias" hasta que se registren.
 
 ## Formato CSV de importación
 
-Codificación UTF-8, separador coma, primera fila con encabezados.
+Codificación UTF-8, separador coma o punto y coma (se detecta solo, como guarda Excel en Chile), primera fila con encabezados. Los valores aceptan el código interno o su nombre en español (sin importar tildes ni mayúsculas). La pantalla Mercado › Importar CSV ofrece una plantilla.
 
 | Columna | Obligatoria | Valores |
 | --- | --- | --- |
 | `fuente` | sí | Nombre de la tienda/sitio. Se crea si no existe. |
-| `tipo_fuente` | sí | `LOCAL_STORE`, `SUPERMARKET_WEB`, `PUBLIC_AGENCY`, `OTHER` |
-| `cobertura` | sí | `PICHILEMU`, `OHIGGINS`, `NATIONAL`, `WEB` |
+| `tipo_fuente` | sí | `LOCAL_STORE`, `SUPERMARKET_WEB`, `PUBLIC_AGENCY`, `OTHER` o Negocio local, Supermercado, Organismo público, Otra |
+| `cobertura` | sí | `PICHILEMU`, `OHIGGINS`, `NATIONAL`, `WEB` o Pichilemu, Región de O'Higgins, Nacional, Web |
 | `localidad` | no | Texto libre (p. ej. Pichilemu). |
 | `url_fuente` | no | Sitio de la fuente. |
 | `producto` | sí | Nombre del producto observado. |
 | `marca`, `variante` | no | |
 | `contenido`, `unidad_contenido` | no (ambos o ninguno) | Número y `G`, `KG`, `ML`, `L`, `UNIT`. Permite el precio por kg/L/unidad. |
-| `precio_clp` | sí | Entero en pesos. |
-| `tipo_precio` | sí | `REGULAR` o `PROMO`. |
-| `promo_desde`, `promo_hasta` | no (solo `PROMO`) | `AAAA-MM-DD`. |
-| `fecha_observacion` | sí | `AAAA-MM-DD`. |
+| `precio_clp` | sí | Entero en pesos (acepta `1990`, `1.990` y `$1.990`), hasta $100.000.000. |
+| `tipo_precio` | sí | `REGULAR` o `PROMO` (o Habitual, Promoción). |
+| `promo_desde`, `promo_hasta` | no (solo `PROMO`) | `AAAA-MM-DD` o `dd-mm-aaaa`; el término no puede ser anterior a la observación. |
+| `fecha_observacion` | sí | `AAAA-MM-DD` o `dd-mm-aaaa`; no puede estar en el futuro. |
 | `url` | no | Página concreta del producto. |
 | `notas` | no | Texto libre (p. ej. "etiqueta Oferta, sin vigencia"). |
 

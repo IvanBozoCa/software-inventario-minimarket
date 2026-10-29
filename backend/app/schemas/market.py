@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.models.market import MarketScope, MarketSourceType, MatchType, PriceType
 from app.models.product import ContentUnit
+from app.schemas.limits import MAX_PRICE_CLP
 
 
 def _clean(value: str | None) -> str | None:
@@ -67,7 +68,7 @@ class MarketSourceRead(BaseModel):
 
 
 class ObservationCreate(BaseModel):
-    price_clp: int = Field(gt=0)
+    price_clp: int = Field(gt=0, le=MAX_PRICE_CLP)
     price_type: PriceType
     promo_valid_from: date | None = None
     promo_valid_until: date | None = None
@@ -92,6 +93,10 @@ class ObservationCreate(BaseModel):
             and self.promo_valid_until < self.promo_valid_from
         ):
             raise ValueError("La vigencia de la promoción termina antes de comenzar")
+        if self.promo_valid_until and self.promo_valid_until < self.observed_on:
+            raise ValueError(
+                "La promoción no puede terminar antes de la fecha de observación"
+            )
         if self.observed_on > date.today():
             raise ValueError("La fecha de observación no puede estar en el futuro")
         return self

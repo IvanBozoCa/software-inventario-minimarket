@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import csv
 import io
+import re
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
@@ -30,6 +32,7 @@ from app.models.market import (
     PriceType,
 )
 from app.models.product import ContentUnit
+from app.schemas.limits import MAX_PRICE_CLP
 
 STALE_DAYS_KEY = "market_stale_days"
 DEFAULT_STALE_DAYS = 30
@@ -305,12 +308,78 @@ def _blank_to_none(value: str | None) -> str | None:
     return value or None
 
 
+def fold_text(value: str) -> str:
+    """Minúsculas y sin tildes, para comparar textos escritos a mano."""
+    decomposed = unicodedata.normalize("NFKD", value.strip().lower())
+    return "".join(char for char in decomposed if not unicodedata.combining(char))
+
+
+# Valores en español aceptados en el CSV, además de los códigos internos.
+_SPANISH_VALUES: dict[type, dict[str, str]] = {
+    MarketSourceType: {
+        "negocio local": "LOCAL_STORE",
+        "negocio": "LOCAL_STORE",
+        "almacen": "LOCAL_STORE",
+        "supermercado": "SUPERMARKET_WEB",
+        "supermercado (sitio web)": "SUPERMARKET_WEB",
+        "supermercado web": "SUPERMARKET_WEB",
+        "sitio web": "SUPERMARKET_WEB",
+        "organismo publico": "PUBLIC_AGENCY",
+        "otra": "OTHER",
+        "otro": "OTHER",
+    },
+    MarketScope: {
+        "pichilemu": "PICHILEMU",
+        "region de o'higgins": "OHIGGINS",
+        "o'higgins": "OHIGGINS",
+        "ohiggins": "OHIGGINS",
+        "region": "OHIGGINS",
+        "nacional": "NATIONAL",
+        "web": "WEB",
+        "precio web": "WEB",
+    },
+    PriceType: {
+        "habitual": "REGULAR",
+        "normal": "REGULAR",
+        "regular": "REGULAR",
+        "promocion": "PROMO",
+        "promo": "PROMO",
+        "oferta": "PROMO",
+    },
+    ContentUnit: {
+        "gr": "G",
+        "gramos": "G",
+        "kilo": "KG",
+        "kilos": "KG",
+        "lt": "L",
+        "litro": "L",
+        "litros": "L",
+        "cc": "ML",
+        "un": "UNIT",
+        "un.": "UNIT",
+        "unidad": "UNIT",
+        "unidades": "UNIT",
+    },
+}
+
+_SPANISH_HINT: dict[type, str] = {
+    MarketSourceType: "Negocio local, Supermercado, Organismo público u Otra",
+    MarketScope: "Pichilemu, Región de O'Higgins, Nacional o Web",
+    PriceType: "Habitual o Promoción",
+    ContentUnit: "g, kg, ml, L o unidad",
+}
+
+
 def _parse_enum(enum_cls, raw: str, label: str):
     try:
         return enum_cls(raw.strip().upper())
-    except ValueError as exc:
-        allowed = ", ".join(item.value for item in enum_cls)
-        raise MarketError(f"{label} inválido '{raw}'. Valores permitidos: {allowed}") from exc
+    except ValueError:
+        pass
+    alias = _SPANISH_VALUES.get(enum_cls, {}).get(fold_text(raw))
+    if alias is not None:
+        return enum_cls(alias)
+    allowed = _SPANISH_HINT.get(enum_cls) or ", ".join(item.value for item in enum_cls)
+    raise MarketError(f"{label} no reconocido: '{raw.strip()}'. Usa {allowed}")
 
 
 def _parse_date(raw: str | None, label: str) -> date | None:
@@ -319,8 +388,28 @@ def _parse_date(raw: str | None, label: str) -> date | None:
         return None
     try:
         return date.fromisoformat(raw)
+    except ValueError:
+        pass
+    try:
+        return datetime.strptime(raw.replace("/", "-"), "%d-%m-%Y").date()
     except ValueError as exc:
-        raise MarketError(f"{label} debe tener formato AAAA-MM-DD") from exc
+        raise MarketError(f"{label} debe ser una fecha como 27-10-2026") from exc
+
+
+def _parse_price(raw: str) -> int:
+    """Precio en pesos enteros: acepta 1990, 1.990 y $1.990."""
+    text = raw.strip().replace("$", "").replace(" ", "")
+    if re.fullmatch(r"\d{1,3}(\.\d{3})+", text):
+        text = text.replace(".", "")
+    if not text.isdigit():
+        raise MarketError("precio_clp debe ser un número entero en pesos, por ejemplo 1990")
+    return int(text)
+
+
+def _detect_delimiter(content: str) -> str:
+    """Excel en Chile guarda los CSV con punto y coma."""
+    first_line = content.split("\n", 1)[0]
+    return ";" if first_line.count(";") > first_line.count(",") else ","
 
 
 def _find_or_create_source(db: Session, row: dict, result: ImportResult) -> MarketSource:
@@ -358,6 +447,8 @@ def _find_or_create_reference(
     if amount_raw is not None:
         try:
             amount = Decimal(amount_raw.replace(",", "."))
+            if not amount.is_finite() or amount <= 0:
+                raise InvalidOperation
         except InvalidOperation as exc:
             raise MarketError("contenido debe ser numérico") from exc
     unit = _parse_enum(ContentUnit, unit_raw, "unidad_contenido") if unit_raw else None
@@ -399,11 +490,16 @@ def import_csv(db: Session, content: str) -> ImportResult:
     """Importa observaciones desde CSV. Es idempotente: no duplica una
     observación con la misma referencia, fecha, tipo y precio."""
     result = ImportResult()
-    reader = csv.DictReader(io.StringIO(content))
-    header = set(reader.fieldnames or [])
+    reader = csv.DictReader(io.StringIO(content), delimiter=_detect_delimiter(content))
+    reader.fieldnames = [fold_text(name) for name in reader.fieldnames or []]
+    header = set(reader.fieldnames)
     missing = REQUIRED_CSV_COLUMNS - header
     if missing:
-        raise MarketError("Faltan columnas obligatorias: " + ", ".join(sorted(missing)))
+        raise MarketError(
+            "Faltan columnas obligatorias: "
+            + ", ".join(sorted(missing))
+            + ". La primera línea debe tener los nombres de las columnas (descarga la plantilla)."
+        )
 
     for line_number, row in enumerate(reader, start=2):
         try:
@@ -411,18 +507,23 @@ def import_csv(db: Session, content: str) -> ImportResult:
                 for column in REQUIRED_CSV_COLUMNS:
                     if not _blank_to_none(row.get(column)):
                         raise MarketError(f"La columna '{column}' está vacía")
-                try:
-                    price = int(row["precio_clp"].strip())
-                except ValueError as exc:
-                    raise MarketError("precio_clp debe ser un entero en pesos") from exc
+                price = _parse_price(row["precio_clp"])
                 if price <= 0:
                     raise MarketError("precio_clp debe ser mayor que cero")
+                if price > MAX_PRICE_CLP:
+                    raise MarketError("precio_clp es demasiado alto; revisa que no sobre un dígito")
                 price_type = _parse_enum(PriceType, row["tipo_precio"], "tipo_precio")
                 observed_on = _parse_date(row["fecha_observacion"], "fecha_observacion")
                 promo_from = _parse_date(row.get("promo_desde"), "promo_desde")
                 promo_until = _parse_date(row.get("promo_hasta"), "promo_hasta")
+                if observed_on > today():
+                    raise MarketError("la fecha de observación está en el futuro")
                 if price_type == PriceType.REGULAR and (promo_from or promo_until):
                     raise MarketError("Las fechas de promoción solo aplican a precios promocionales")
+                if promo_from and promo_until and promo_until < promo_from:
+                    raise MarketError("la promoción termina antes de comenzar")
+                if promo_until and promo_until < observed_on:
+                    raise MarketError("la promoción termina antes de la fecha de observación")
 
                 source = _find_or_create_source(db, row, result)
                 reference = _find_or_create_reference(db, source, row, result)

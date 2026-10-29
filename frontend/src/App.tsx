@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import "./admin.css";
 import { api, setAccessToken, UNAUTHORIZED_EVENT } from "./api";
+import type { AccessStatus } from "./api";
+import { applySession, supabaseClient } from "./auth/supabase";
 import CategoriesPage from "./pages/CategoriesPage";
 import InventoryPage from "./pages/InventoryPage";
 import LoginPage from "./pages/LoginPage";
@@ -21,40 +23,110 @@ function useRoute(): Route {
 }
 
 // "checking": consultando el backend · "ok": listo · "login": el backend exige
-// contraseña y no hay sesión · "offline": el backend no responde.
+// acceso y no hay sesión · "offline": el backend no responde.
 type Access = "checking" | "ok" | "login" | "offline";
+
+const OPEN_STATUS: AccessStatus = { required: false, authenticated: true, expires_at: null, mode: "none" };
+
+function hasSupabase(status: AccessStatus): status is AccessStatus & {
+  supabase_url: string;
+  supabase_anon_key: string;
+} {
+  return status.mode === "supabase" && !!status.supabase_url && !!status.supabase_anon_key;
+}
 
 function App() {
   const route = useRoute();
   const [access, setAccess] = useState<Access>("checking");
-  const [passwordRequired, setPasswordRequired] = useState(false);
+  const [status, setStatus] = useState<AccessStatus>(OPEN_STATUS);
+  const [loginNotice, setLoginNotice] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    let unsubscribe = () => {};
+
+    // En modo Supabase el JWT de la sesión es el token de la API; tras obtenerlo
+    // se vuelve a consultar /auth/status para confirmar que el correo está autorizado.
+    const verifySupabaseSession = async (initial: AccessStatus) => {
+      const supabase = supabaseClient(initial.supabase_url!, initial.supabase_anon_key!);
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (cancelled) return;
+      if (session) {
+        applySession(session);
+        const confirmed = await api.accessStatus();
+        if (cancelled) return;
+        if (confirmed.authenticated) {
+          setStatus(confirmed);
+          setAccess("ok");
+        } else {
+          setLoginNotice(
+            `El correo ${session.user?.email ?? "usado"} no está autorizado para entrar a SIM.`,
+          );
+          await supabase.auth.signOut();
+          setAccessToken(null);
+          setAccess("login");
+        }
+      } else {
+        setAccess("login");
+      }
+
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((event, newSession) => {
+        if (event === "SIGNED_OUT") {
+          setAccessToken(null);
+          setAccess("login");
+          return;
+        }
+        if (newSession && (event === "SIGNED_IN" || event === "TOKEN_REFRESHED")) {
+          applySession(newSession);
+          if (event === "SIGNED_IN") {
+            void verifySupabaseSession(initial);
+          }
+        }
+      });
+      unsubscribe();
+      unsubscribe = () => subscription.unsubscribe();
+    };
+
     api
       .accessStatus()
-      .then((status) => {
+      .then((initial) => {
         if (cancelled) return;
-        setPasswordRequired(status.required);
-        setAccess(status.authenticated ? "ok" : "login");
+        setStatus(initial);
+        if (initial.authenticated) {
+          setAccess("ok");
+          return;
+        }
+        if (hasSupabase(initial)) {
+          return verifySupabaseSession(initial).catch(() => !cancelled && setAccess("login"));
+        }
+        setAccess("login");
       })
       .catch(() => !cancelled && setAccess("offline"));
 
     const onUnauthorized = () => {
       setAccessToken(null);
-      setPasswordRequired(true);
+      setStatus((current) => ({ ...current, required: true, authenticated: false }));
       setAccess("login");
     };
     window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
     return () => {
       cancelled = true;
+      unsubscribe();
       window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
     };
   }, []);
 
   const logout = () => {
     setAccessToken(null);
+    setLoginNotice(null);
     setAccess("login");
+    if (hasSupabase(status)) {
+      void supabaseClient(status.supabase_url, status.supabase_anon_key).auth.signOut();
+    }
   };
 
   const navItems: { path: string; label: string; active: boolean }[] = [
@@ -89,9 +161,9 @@ function App() {
           {access === "login" && "Sesión requerida"}
           {access === "offline" && "Sin conexión con el servidor"}
         </span>
-        {access === "ok" && passwordRequired && (
+        {access === "ok" && status.required && (
           <button type="button" className="link" onClick={logout}>
-            Cerrar sesión
+            {status.email ? `Cerrar sesión (${status.email})` : "Cerrar sesión"}
           </button>
         )}
       </header>
@@ -107,7 +179,9 @@ function App() {
             </p>
           </section>
         )}
-        {access === "login" && <LoginPage onLoggedIn={() => setAccess("ok")} />}
+        {access === "login" && (
+          <LoginPage status={status} notice={loginNotice} onLoggedIn={() => setAccess("ok")} />
+        )}
         {access === "ok" && (
           <>
             {route.page === "inventory" && <InventoryPage />}

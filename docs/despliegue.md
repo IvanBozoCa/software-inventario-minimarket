@@ -15,27 +15,45 @@ usan dos piezas de la cuenta eunomi que ya existen para otros productos:
 | --- | --- | --- |
 | `MINIMARKET_DATABASE_URL` | sí | `postgresql+psycopg://postgres.<ref>:<clave>@<host-pooler>:6543/postgres` (cadena del *transaction pooler* de Supabase; funciona desde Vercel por IPv4). |
 | `SIM_DB_SCHEMA` | sí | `sim`. Todas las tablas se leen y escriben en ese esquema; en SQLite se deja vacío. |
-| `SIM_ACCESS_PASSWORD` | sí | Contraseña única del administrador (mínimo 8 caracteres recomendados). Si no existe, la API queda abierta: solo para uso local. |
-| `SIM_ACCESS_SESSION_HOURS` | no | Horas de vigencia de la sesión tras iniciar sesión (12 por defecto). |
+| `SIM_SUPABASE_URL` | sí (enlace mágico) | URL del proyecto Supabase, p. ej. `https://<ref>.supabase.co`. Activa el acceso por enlace mágico. |
+| `SIM_ALLOWED_EMAILS` | sí (enlace mágico) | Correos autorizados separados por coma. Cualquier otro correo recibe el enlace pero la API lo rechaza. |
+| `SIM_SUPABASE_ANON_KEY` | sí (enlace mágico) | Clave pública (*publishable* o *anon*) del proyecto; la interfaz la usa para pedir el enlace. |
+| `SIM_ACCESS_PASSWORD` | alternativa | Contraseña única del administrador. Solo se usa si no está configurado el enlace mágico. Si no existe ninguna de las dos, la API queda abierta: solo para uso local. |
+| `SIM_ACCESS_SESSION_HOURS` | no | Horas de vigencia de la sesión con contraseña (12 por defecto). |
 | `SIM_CORS_ORIGINS` | sí | Orígenes permitidos separados por coma, p. ej. `https://sim.eunomi.cl`. |
-
-Cambiar `SIM_ACCESS_PASSWORD` cierra todas las sesiones abiertas: el token se
-firma con una clave derivada de la contraseña, no se guarda en la base y por
-eso funciona igual en varias instancias de Vercel.
 
 ## Cómo funciona el acceso
 
-1. La interfaz consulta `GET /auth/status`. Si `required` es `true` y no hay
-   token válido, muestra la pantalla "Acceso al administrador".
-2. `POST /auth/login {password}` devuelve un token firmado (HMAC-SHA256) con
-   fecha de expiración; la interfaz lo guarda en `localStorage` y lo envía
-   como `Authorization: Bearer …` en cada petición.
-3. Cualquier respuesta 401 vuelve a mostrar la pantalla de acceso.
-4. En el equipo local (sin `SIM_ACCESS_PASSWORD`) nada de esto se activa.
+La API expone `GET /auth/status` con `mode`: `none` (abierta, equipo local),
+`supabase` (enlace mágico) o `password` (contraseña única). La interfaz guarda
+el token en `localStorage` y lo envía como `Authorization: Bearer …`; cualquier
+401 vuelve a mostrar la pantalla de acceso.
 
-Limitación conocida: no hay límite de intentos de contraseña en la API. Si se
-necesita, se puede activar en el Firewall de Vercel (rate limiting) sin tocar
-el código.
+### Enlace mágico (Supabase Auth)
+
+1. La interfaz recibe en `/auth/status` la URL y la clave pública del proyecto
+   y pide a Supabase un enlace con `signInWithOtp` para el correo escrito.
+2. El administrador abre el enlace **en el mismo dispositivo** (flujo PKCE);
+   supabase-js obtiene la sesión y su JWT pasa a ser el token de la API.
+3. La API verifica el JWT con las claves públicas del proyecto
+   (`/auth/v1/.well-known/jwks.json`, ES256), la audiencia `authenticated`,
+   el emisor y la expiración, y exige que `email` esté en `SIM_ALLOWED_EMAILS`.
+   Un correo no autorizado ve el aviso y queda fuera.
+4. supabase-js renueva el token solo; "Cerrar sesión" cierra la sesión en
+   Supabase y borra el token.
+
+Configuración en Supabase (Authentication → URL Configuration): *Site URL*
+`https://sim.eunomi.cl` y esa misma dirección en *Redirect URLs*. El envío de
+correos usa el SMTP integrado de Supabase (límite bajo de correos por hora,
+suficiente para un administrador).
+
+### Contraseña única
+
+`POST /auth/login {password}` devuelve un token firmado (HMAC-SHA256) con fecha
+de expiración. Cambiar `SIM_ACCESS_PASSWORD` cierra todas las sesiones: el token
+se firma con una clave derivada de la contraseña y no se guarda en la base.
+Limitación conocida: no hay límite de intentos; puede activarse en el Firewall
+de Vercel (rate limiting) sin tocar el código.
 
 ## Migraciones en Supabase
 

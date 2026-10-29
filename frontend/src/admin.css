@@ -740,3 +740,660 @@ th button.sort {
 .input-with-action button {
   white-space: nowrap;
 }
+
+/* --- Rediseño visual (29-10-2026) ---
+   Fondo gris suave con tarjetas blancas, tipografía de 16 px pensada para
+   tablas, cabecera alineada con el contenido y barra inferior en el celular. */
+:root {
+  --app-bg: #f4f4f7;
+  --surface: #ffffff;
+  --border: #e3e2e8;
+  --text: #5d5867;
+  --radius: 12px;
+  --shadow-sm: 0 1px 2px rgba(20, 16, 40, 0.05);
+  font-size: 16px;
+  line-height: 1.5;
+  letter-spacing: normal;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --app-bg: #0f1014;
+    --surface: #18191f;
+    --border: #2c2e38;
+    --text: #a3a6b1;
+    --shadow-sm: none;
+  }
+}
+
+body {
+  background: var(--app-bg);
+}
+
+h2 {
+  letter-spacing: -0.01em;
+}
+
+.admin-shell {
+  background: var(--app-bg);
+}
+
+/* Cabecera */
+.admin-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: block;
+  padding: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.admin-header-inner {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0.6rem 1.5rem;
+  box-sizing: border-box;
+  min-height: 60px;
+}
+
+.admin-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--text-h);
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.admin-brand-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 9px;
+  background: var(--accent-text);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.admin-brand-name {
+  font-weight: 650;
+  font-size: 1rem;
+  white-space: nowrap;
+}
+
+.admin-nav {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.admin-header .admin-nav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: 8px;
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 550;
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
+
+.admin-header .admin-nav a:hover {
+  background: var(--muted-bg);
+  color: var(--text-h);
+}
+
+.admin-header .admin-nav a.active {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+}
+
+.admin-nav .nav-short,
+.admin-nav .nav-icon {
+  display: none;
+}
+
+.nav-icon {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.admin-header-end {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.backend-status {
+  margin-left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.backend-status::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.admin-header-end button.link {
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+/* Contenido */
+.admin-main {
+  padding: 1.75rem 1.5rem 3rem;
+}
+
+.page-header {
+  margin-bottom: 1.25rem;
+  align-items: flex-end;
+}
+
+.page-header h2 {
+  font-size: 1.6rem;
+  font-weight: 650;
+}
+
+.page-header p {
+  margin-top: 0.3rem;
+  font-size: 0.92rem;
+  max-width: 70ch;
+}
+
+.card {
+  background: var(--surface);
+  border-color: var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 1.1rem 1.25rem;
+}
+
+.card strong,
+.card h3 {
+  color: var(--text-h);
+}
+
+.card h2 {
+  font-size: 1.15rem;
+  font-weight: 650;
+}
+
+/* Tarjeta de referencia de mercado: el nombre del producto como título. */
+.card > .page-header strong:first-child {
+  display: block;
+  font-size: 1.05rem;
+}
+
+.card.table-wrap {
+  padding: 0.25rem 0.5rem;
+}
+
+fieldset {
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem 1.1rem;
+}
+
+input,
+select,
+textarea {
+  background: var(--surface);
+  border-radius: 8px;
+  min-height: 40px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent-text);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+input[type="checkbox"] {
+  min-height: 0;
+  accent-color: var(--accent-text);
+}
+
+button,
+a.button,
+label.button {
+  box-sizing: border-box;
+  min-height: 40px;
+  justify-content: center;
+  font-size: 0.95rem;
+  background: var(--surface);
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+button:not(.link):not(.chip):not(.sort):not(.primary):not(:disabled):hover,
+a.button:not(.primary):hover {
+  background: var(--muted-bg);
+}
+
+button.primary:not(:disabled):hover,
+a.button.primary:hover {
+  filter: brightness(1.12);
+}
+
+button.link,
+button.chip,
+th button.sort {
+  min-height: 0;
+}
+
+button.link {
+  background: none;
+}
+
+/* Etiquetas de formulario: "opcional" junto al nombre, para que todos los
+   campos de una fila queden a la misma altura. */
+label.field {
+  display: block;
+  font-size: 0.86rem;
+}
+
+label.field .hint {
+  font-size: 0.8rem;
+  margin-left: 0.15rem;
+}
+
+label.field > :is(input, select, textarea, div) {
+  margin-top: 0.35rem;
+}
+
+label.field > :is(input, select, textarea, div) ~ :is(.hint, .field-error, .alert) {
+  display: block;
+  margin-left: 0;
+  margin-top: 0.3rem;
+  line-height: 1.4;
+}
+
+.form-grid {
+  gap: 1rem 1.1rem;
+}
+
+.inline-form label.field {
+  align-self: flex-end;
+}
+
+/* Textos secundarios con interlineado más compacto. */
+.sub,
+.stat .detail,
+.hint,
+.muted {
+  line-height: 1.4;
+}
+
+/* Barra de búsqueda: en la misma línea en pantallas anchas. */
+.toolbar input[type="search"] {
+  flex: 2 1 280px;
+  width: auto;
+}
+
+.toolbar select {
+  flex: 1 1 200px;
+  width: auto;
+}
+
+/* Tablas */
+table {
+  font-size: 0.92rem;
+}
+
+th {
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+th,
+td {
+  padding: 0.7rem 0.75rem;
+  vertical-align: middle;
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+tbody tr:hover td {
+  background: rgba(128, 128, 128, 0.04);
+}
+
+/* Indicadores de la ficha: acción alineada abajo a la izquierda. */
+.stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 0.85rem 1rem;
+}
+
+.stat .label {
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.stat .value {
+  font-size: 1.5rem;
+  line-height: 1.2;
+}
+
+.stat button.link {
+  margin-top: auto;
+  padding: 0.35rem 0 0;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+/* Filtros de estado del inventario */
+.filter-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.filter-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 36px;
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface);
+}
+
+.filter-tabs button[aria-pressed="true"] {
+  color: var(--accent-text);
+  border-color: var(--accent-text);
+  background: var(--accent-bg);
+}
+
+.filter-tabs .count {
+  min-width: 1.4rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--muted-bg);
+  color: var(--text-h);
+  font-size: 0.75rem;
+  text-align: center;
+  line-height: 1.4rem;
+}
+
+.filter-tabs .count.danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.filter-tabs .count.warn {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.empty {
+  padding: 2.5rem 1.5rem;
+}
+
+.empty > p {
+  margin-bottom: 0.75rem;
+}
+
+.login-card {
+  margin-top: 4rem;
+}
+
+@media (max-width: 900px) {
+  .admin-brand-name {
+    display: none;
+  }
+}
+
+/* Celular: cabecera de una línea y navegación fija abajo. */
+@media (max-width: 720px) {
+  .admin-header-inner {
+    min-height: 52px;
+    padding: 0.4rem 1rem;
+    gap: 0.75rem;
+  }
+
+  .admin-brand-name {
+    display: inline;
+    font-size: 0.95rem;
+  }
+
+  .admin-header .logout-email {
+    display: none;
+  }
+
+  .admin-header-end button.link {
+    min-height: 40px;
+    padding: 0.4rem 0.3rem;
+  }
+
+  .admin-header .admin-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0;
+    padding: 0.3rem 0.5rem calc(0.3rem + env(safe-area-inset-bottom));
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -2px 10px rgba(20, 16, 40, 0.06);
+  }
+
+  .admin-header .admin-nav a {
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.1rem;
+    min-height: 54px;
+    padding: 0.25rem;
+    font-size: 0.75rem;
+    border-radius: 10px;
+  }
+
+  .admin-header .admin-nav a.active {
+    background: none;
+  }
+
+  .admin-nav a.active .nav-icon {
+    background: var(--accent-bg);
+    border-radius: 999px;
+    padding: 2px 14px;
+  }
+
+  /* Oculto a la vista pero no a los lectores de pantalla. */
+  .admin-nav .nav-long {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .admin-nav .nav-short,
+  .admin-nav .nav-icon {
+    display: block;
+  }
+
+  .with-nav .admin-main {
+    padding-bottom: calc(6rem + env(safe-area-inset-bottom));
+  }
+
+  .admin-main {
+    padding-top: 1.1rem;
+  }
+
+  .page-header {
+    align-items: stretch;
+  }
+
+  .page-header h2 {
+    font-size: 1.4rem;
+  }
+
+  .page-header > .actions {
+    width: 100%;
+  }
+
+  .page-header > .actions > :is(button, a.button) {
+    flex: 1 1 auto;
+  }
+
+  .card.table-wrap {
+    padding: 0 1rem;
+  }
+
+  table.cards tr {
+    padding: 0.85rem 0;
+  }
+
+  table.cards tbody tr:last-child {
+    border-bottom: none;
+  }
+
+  tbody tr:hover td {
+    background: none;
+  }
+
+  .toolbar input[type="search"] {
+    flex: 1 1 100%;
+  }
+
+  .toolbar select {
+    flex: 1 1 0;
+  }
+
+  /* Inventario: cantidad, costo y margen en una sola línea por producto. */
+  table.inventory-table tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+  }
+
+  table.inventory-table td {
+    order: 1;
+  }
+
+  table.inventory-table td.price {
+    order: 2;
+    padding: 0.3rem 0 0.1rem;
+  }
+
+  table.inventory-table td.num[data-label] {
+    order: 3;
+    width: auto;
+    margin-right: 1.1rem;
+  }
+
+  table.inventory-table td:last-child {
+    order: 4;
+  }
+
+  table.inventory-table .chips {
+    margin-top: 0.35rem;
+  }
+
+  .filter-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin-inline: -1rem;
+    padding-inline: 1rem;
+    scrollbar-width: none;
+  }
+
+  .filter-tabs button {
+    flex-shrink: 0;
+    min-height: 40px;
+  }
+
+  .stats {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem;
+  }
+
+  .stat .value {
+    font-size: 1.3rem;
+  }
+
+  .stat .label {
+    letter-spacing: 0.03em;
+  }
+}
+
+.chip.subtle {
+  background: none;
+  color: var(--text);
+  border: 1px dashed var(--border);
+}
+
+fieldset > p {
+  margin-bottom: 0.8rem;
+}
+
+/* La primera columna (nombre) se lee como título de la fila. */
+tbody td:first-child {
+  color: var(--text-h);
+}
+
+@media (max-width: 720px) {
+  table.cards td:first-child:not([data-label]) {
+    font-weight: 600;
+    font-size: 1rem;
+  }
+}
+
+/* Modo oscuro: el morado de acento es claro, así que el texto sobre él va
+   oscuro; los colores de estado se aclaran para mantener el contraste. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --on-accent: #1d0b33;
+    --ok: #5fd39a;
+    --warn: #f0b952;
+    --danger: #ff8a80;
+  }
+
+  button.primary,
+  a.button.primary,
+  .admin-brand-mark {
+    color: var(--on-accent);
+  }
+
+  .filter-tabs .count.danger {
+    color: var(--on-accent);
+  }
+}

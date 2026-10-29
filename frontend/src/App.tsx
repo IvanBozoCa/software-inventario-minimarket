@@ -44,6 +44,13 @@ const PAGE_TITLE: Record<Route["page"], string> = {
   market: "Precios de mercado",
 };
 
+// Íconos de la barra inferior en el celular (trazos de 24 px).
+const NAV_ICONS = {
+  inventory: "M3 7.5 12 3l9 4.5v9L12 21l-9-4.5v-9Zm0 0 9 4.5m0 0 9-4.5M12 12v9",
+  market: "M3 12V4h8l10 10-8 8L3 12Zm4.5-4.5h.01",
+  margins: "M19 5 5 19M7.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm9 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z",
+};
+
 function App() {
   const route = useRoute();
   const [access, setAccess] = useState<Access>("checking");
@@ -173,46 +180,73 @@ function App() {
     }
   };
 
-  const navItems: { path: string; label: string; active: boolean }[] = [
+  // Orden según el uso diario: el inventario (buscar, escanear, ajustar precio y
+  // cantidad) es la pantalla de inicio; los márgenes se configuran pocas veces.
+  const navItems: { path: string; label: string; short: string; icon: string; active: boolean }[] = [
     {
       path: "#/",
       label: "Inventario",
+      short: "Inventario",
+      icon: NAV_ICONS.inventory,
       active: ["inventory", "product", "product-new", "product-edit"].includes(route.page),
     },
-    { path: "#/categorias", label: "Categorías y márgenes", active: route.page === "categories" },
-    { path: "#/mercado", label: "Precios de mercado", active: route.page === "market" },
+    { path: "#/mercado", label: "Precios de mercado", short: "Mercado", icon: NAV_ICONS.market, active: route.page === "market" },
+    { path: "#/categorias", label: "Categorías y márgenes", short: "Márgenes", icon: NAV_ICONS.margins, active: route.page === "categories" },
   ];
 
   return (
-    <div className="admin-shell">
+    <div className={`admin-shell${access === "ok" ? " with-nav" : ""}`}>
       <header className="admin-header">
-        <div className="admin-brand">
-          <span className="admin-brand-kicker">SIM</span>
-          <h1>Inventario y precios</h1>
+        <div className="admin-header-inner">
+          <a className="admin-brand" href="#/" aria-label="SIM, ir al inventario">
+            <span className="admin-brand-mark" aria-hidden="true">
+              SIM
+            </span>
+            <span className="admin-brand-name">Inventario y precios</span>
+          </a>
+          {access === "ok" && (
+            <nav aria-label="Secciones" className="admin-nav">
+              {navItems.map((item) => (
+                <a
+                  key={item.path}
+                  href={item.path}
+                  className={item.active ? "active" : ""}
+                  aria-current={item.active ? "page" : undefined}
+                >
+                  <svg className="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d={item.icon} />
+                  </svg>
+                  <span className="nav-long">{item.label}</span>
+                  <span className="nav-short" aria-hidden="true">
+                    {item.short}
+                  </span>
+                </a>
+              ))}
+            </nav>
+          )}
+          <div className="admin-header-end">
+            <span
+              className={`backend-status backend-${access === "ok" && connectionLost ? "warn" : access}`}
+              role="status"
+            >
+              {access === "checking" && "Conectando…"}
+              {access === "ok" && (connectionLost ? "Sin conexión" : "Conectado")}
+              {access === "login" && "Sesión requerida"}
+              {access === "offline" && "Sin conexión con el servidor"}
+            </span>
+            {access === "ok" && status.required && (
+              <button
+                type="button"
+                className="link"
+                onClick={logout}
+                aria-label={status.email ? `Cerrar sesión (${status.email})` : "Cerrar sesión"}
+              >
+                Cerrar sesión
+                {status.email && <span className="logout-email"> ({status.email})</span>}
+              </button>
+            )}
+          </div>
         </div>
-        {access === "ok" && (
-          <nav aria-label="Secciones">
-            {navItems.map((item) => (
-              <a key={item.path} href={item.path} className={item.active ? "active" : ""}>
-                {item.label}
-              </a>
-            ))}
-          </nav>
-        )}
-        <span
-          className={`backend-status backend-${access === "ok" && connectionLost ? "warn" : access}`}
-          role="status"
-        >
-          {access === "checking" && "Conectando…"}
-          {access === "ok" && (connectionLost ? "Sin conexión" : "Conectado")}
-          {access === "login" && "Sesión requerida"}
-          {access === "offline" && "Sin conexión con el servidor"}
-        </span>
-        {access === "ok" && status.required && (
-          <button type="button" className="link" onClick={logout}>
-            {status.email ? `Cerrar sesión (${status.email})` : "Cerrar sesión"}
-          </button>
-        )}
       </header>
 
       <main className="admin-main">

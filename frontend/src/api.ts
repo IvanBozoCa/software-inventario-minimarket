@@ -339,17 +339,38 @@ export function setAccessToken(token: string | null): void {
   }
 }
 
-function authHeaders(): Record<string, string> {
-  const token = getAccessToken();
+// Con Supabase el token vence cada hora. En vez de usar el guardado (que puede
+// estar vencido si la pestaña estuvo en segundo plano), se le pide a Supabase
+// antes de cada petición: si venció, lo renueva con el token de refresco.
+let tokenSource: (() => Promise<string | null>) | null = null;
+
+export function setAccessTokenSource(source: (() => Promise<string | null>) | null): void {
+  tokenSource = source;
+}
+
+async function authHeaders(): Promise<Record<string, string>> {
+  let token = getAccessToken();
+  if (tokenSource) {
+    try {
+      const fresh = await tokenSource();
+      if (fresh) {
+        token = fresh;
+        setAccessToken(fresh);
+      }
+    } catch {
+      // sin red para renovar: se intenta con el token guardado
+    }
+  }
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
+  const auth = await authHeaders();
   try {
     response = await fetch(`${API_BASE}${path}`, {
       ...init,
-      headers: { "Content-Type": "application/json", ...authHeaders(), ...(init?.headers ?? {}) },
+      headers: { "Content-Type": "application/json", ...auth, ...(init?.headers ?? {}) },
     });
   } catch {
     window.dispatchEvent(new Event(OFFLINE_EVENT));

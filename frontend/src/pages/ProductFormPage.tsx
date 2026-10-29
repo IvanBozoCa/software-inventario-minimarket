@@ -519,7 +519,7 @@ export default function ProductFormPage({
 
         <fieldset>
           <legend>Precio y costo</legend>
-          <div className="form-grid">
+          <div className="form-grid cols-2">
             <label className="field">
               <span>
                 Precio de venta actual (CLP) {!editing && <span className="required">(obligatorio)</span>}

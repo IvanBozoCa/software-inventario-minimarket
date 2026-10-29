@@ -1298,30 +1298,46 @@ tbody tr:hover td {
     flex: 1 1 0;
   }
 
-  /* Inventario: cantidad, costo y margen en una sola línea por producto. */
-  table.inventory-table tr {
+  /* Tablas compactas (inventario, categorías, precios observados): datos
+     cortos en una sola línea y el precio destacado. */
+  table.compact-cards tr {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
+    column-gap: 1.1rem;
   }
 
-  table.inventory-table td {
+  table.compact-cards td {
     order: 1;
   }
 
-  table.inventory-table td.price {
+  table.compact-cards td.price {
     order: 2;
     padding: 0.3rem 0 0.1rem;
   }
 
-  table.inventory-table td.num[data-label] {
+  table.compact-cards td:is(.num[data-label], .inline) {
     order: 3;
     width: auto;
-    margin-right: 1.1rem;
   }
 
-  table.inventory-table td:last-child {
-    order: 4;
+  table.compact-cards td.notes {
+    order: 5;
+    font-size: 0.88rem;
+  }
+
+  table.compact-cards td:last-child {
+    order: 6;
+  }
+
+  table.compact-cards td:empty,
+  table.compact-cards td:has(> .chips:empty) {
+    display: none;
+  }
+
+  table.compact-cards td.row-title {
+    font-weight: 600;
+    font-size: 1rem;
   }
 
   table.inventory-table .chips {
@@ -1396,4 +1412,86 @@ tbody td:first-child {
   .filter-tabs .count.danger {
     color: var(--on-accent);
   }
+}
+
+/* Precio y costo: dos columnas para que las etiquetas largas quepan en una línea. */
+@media (min-width: 721px) {
+  .form-grid.cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Precios de mercado: tarjetas más compactas. */
+.compact-cards td.row-actions {
+  white-space: nowrap;
+}
+
+.compact-cards td.row-actions button.link {
+  padding: 0.2rem 0.3rem;
+  font-size: 0.85rem;
+}
+
+.reference-actions {
+  align-items: center;
+  font-size: 0.88rem;
+}
+
+.reference-actions button:not(.link) {
+  min-height: 34px;
+  padding: 0.3rem 0.8rem;
+  font-size: 0.85rem;
+}
+
+.card .table-wrap table {
+  font-size: 0.88rem;
+}
+
+.card .table-wrap :is(th, td) {
+  padding: 0.5rem 0.6rem;
+}
+
+@media (max-width: 720px) {
+  .compact-cards td.row-actions {
+    white-space: normal;
+  }
+
+  .compact-cards td.row-actions button.link {
+    min-height: 40px;
+    padding-left: 0;
+    margin-right: 0.8rem;
+  }
+
+  .card .table-wrap :is(th, td) {
+    padding: 0.15rem 0;
+  }
+}
+
+.reference-actions :is(button.link, a) {
+  font-size: 0.85rem;
+}
+
+td.price {
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+@media (max-width: 720px) {
+  /* En el celular solo se marca lo inactivo. */
+  table.compact-cards td.inline:has(> .muted:only-child) {
+    display: none;
+  }
+
+  table.compact-cards td:last-child > button.link:first-child {
+    padding-left: 0;
+  }
+}
+
+.stale-note {
+  margin-bottom: 0.75rem;
+}
+
+.stale-note button.link {
+  font-size: inherit;
+  padding: 0 0.2rem;
+  min-height: 0;
 }

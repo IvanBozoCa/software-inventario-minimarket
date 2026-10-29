@@ -176,7 +176,7 @@ export default function CategoriesPage() {
         {categories.length === 0 ? (
           <p className="empty">Todavía no hay categorías.</p>
         ) : (
-          <table className="cards">
+          <table className="cards compact-cards">
             <thead>
               <tr>
                 <th>Categoría</th>
@@ -216,14 +216,14 @@ export default function CategoriesPage() {
                   </tr>
                 ) : (
                   <tr key={category.id} className={category.active ? "" : "inactive"}>
-                    <td>{category.name}</td>
+                    <td className="row-title">{category.name}</td>
                     <td className="num" data-label="Margen mínimo">
                       {category.min_margin === null ? <span className="chip warn">Sin definir</span> : formatPercent(category.min_margin)}
                     </td>
                     <td className="num" data-label="Margen superior">
                       {category.upper_margin === null ? <span className="chip warn">Sin definir</span> : formatPercent(category.upper_margin)}
                     </td>
-                    <td>{category.active ? "Activa" : "Inactiva"}</td>
+                    <td className="inline">{category.active ? <span className="muted">Activa</span> : <span className="chip">Inactiva</span>}</td>
                     <td>
                       <button type="button" className="link" onClick={() => startEdit(category)}>
                         Editar

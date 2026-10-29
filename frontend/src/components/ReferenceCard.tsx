@@ -189,7 +189,7 @@ export function ReferenceCard({
 
       {observations.length > 0 && (
         <div className="table-wrap">
-          <table className="cards">
+          <table className="cards compact-cards">
             <thead>
               <tr>
                 <th>Fecha</th>
@@ -204,8 +204,8 @@ export function ReferenceCard({
             <tbody>
               {observations.map((observation) => (
                 <tr key={observation.id} className={observation.status === "INVALID" ? "inactive" : ""}>
-                  <td data-label="Fecha">{formatDate(observation.observed_on)}</td>
-                  <td data-label="Tipo">
+                  <td className="inline" data-label="Fecha">{formatDate(observation.observed_on)}</td>
+                  <td className="inline" data-label="Tipo">
                     {observation.price_type === "PROMO" ? "Promoción" : "Habitual"}
                     {observation.promo_valid_until && (
                       <span className="sub">hasta {formatDate(observation.promo_valid_until)}</span>
@@ -230,7 +230,7 @@ export function ReferenceCard({
                       )}
                     </div>
                   </td>
-                  <td>
+                  <td className="notes">
                     {observation.notes}
                     {observation.url && (
                       <>
@@ -241,7 +241,7 @@ export function ReferenceCard({
                       </>
                     )}
                   </td>
-                  <td>
+                  <td className="row-actions">
                     {observation.status === "VALID" && (
                       <>
                         <button
@@ -276,7 +276,7 @@ export function ReferenceCard({
         </div>
       )}
 
-      <div className="actions" style={{ marginTop: "0.6rem" }}>
+      <div className="actions reference-actions" style={{ marginTop: "0.6rem" }}>
         {!adding && (
           <button type="button" onClick={() => setAdding(true)}>
             Registrar precio observado

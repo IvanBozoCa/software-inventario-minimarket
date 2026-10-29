@@ -291,7 +291,7 @@ export default function InventoryPage() {
             </button>
           </div>
         ) : (
-          <table className="cards inventory-table">
+          <table className="cards compact-cards inventory-table">
             <thead>
               <tr>
                 {sortHeader("Producto", "name")}

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const fakeAuth = {
   session: null as null | { access_token: string; user: { email: string } },
   signInWithOtp: vi.fn(async () => ({ error: null as null | { message: string } })),
+  signInWithOAuth: vi.fn(async () => ({ data: {}, error: null as null | { message: string } })),
   getSession: vi.fn(async () => ({ data: { session: fakeAuth.session } })),
   onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
   signOut: vi.fn(async () => ({ error: null })),
@@ -54,18 +55,46 @@ function mockApi(handlers: Record<string, (init?: RequestInit) => Promise<Respon
 
 const authHeader = (init?: RequestInit) => (init?.headers as Record<string, string> | undefined)?.Authorization;
 
-describe("App con enlace mágico (Supabase)", () => {
+describe("App con acceso por Google o enlace mágico (Supabase)", () => {
   beforeEach(() => {
     window.location.hash = "";
     window.localStorage.removeItem("sim.accessToken");
     fakeAuth.session = null;
     fakeAuth.signInWithOtp.mockClear();
+    fakeAuth.signInWithOAuth.mockClear();
     fakeAuth.signOut.mockClear();
   });
 
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+  });
+
+  it("entra con Google", async () => {
+    mockApi({ "GET /auth/status": () => jsonResponse(SUPABASE_STATUS) });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Entrar con Google" }));
+
+    await waitFor(() =>
+      expect(fakeAuth.signInWithOAuth).toHaveBeenCalledWith(
+        expect.objectContaining({ provider: "google" }),
+      ),
+    );
+  });
+
+  it("avisa si Google no está activado en Supabase", async () => {
+    mockApi({ "GET /auth/status": () => jsonResponse(SUPABASE_STATUS) });
+    fakeAuth.signInWithOAuth.mockResolvedValueOnce({
+      data: {},
+      error: { message: "Unsupported provider: provider is not enabled" },
+    });
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Entrar con Google" }));
+
+    expect(await screen.findByText(/todavía no está activado/)).toBeInTheDocument();
   });
 
   it("pide el correo y envía el enlace", async () => {
@@ -75,6 +104,7 @@ describe("App con enlace mágico (Supabase)", () => {
 
     expect(await screen.findByText("Acceso al administrador")).toBeInTheDocument();
     expect(screen.queryByLabelText("Contraseña")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Prefiero recibir un enlace por correo" }));
 
     fireEvent.change(screen.getByLabelText("Correo"), { target: { value: " Admin@Minimarket.cl " } });
     fireEvent.click(screen.getByRole("button", { name: "Enviarme el enlace" }));
@@ -91,7 +121,7 @@ describe("App con enlace mágico (Supabase)", () => {
     fakeAuth.signInWithOtp.mockResolvedValueOnce({ error: { message: "email rate limit exceeded" } });
 
     render(<App />);
-    await screen.findByText("Acceso al administrador");
+    fireEvent.click(await screen.findByRole("button", { name: "Prefiero recibir un enlace por correo" }));
     fireEvent.change(screen.getByLabelText("Correo"), { target: { value: "a@b.cl" } });
     fireEvent.click(screen.getByRole("button", { name: "Enviarme el enlace" }));
 
@@ -122,6 +152,31 @@ describe("App con enlace mágico (Supabase)", () => {
     expect(await screen.findByText("Acceso al administrador")).toBeInTheDocument();
     expect(window.localStorage.getItem("sim.accessToken")).toBeNull();
     expect(fakeAuth.signOut).toHaveBeenCalled();
+  });
+
+  it("usa el token renovado por Supabase aunque el guardado esté vencido", async () => {
+    window.localStorage.setItem("sim.accessToken", "vencido");
+    fakeAuth.session = { access_token: "sb-tok", user: { email: "admin@minimarket.cl" } };
+    const calls = mockApi({
+      "GET /auth/status": (init) =>
+        authHeader(init) === "Bearer sb-tok"
+          ? jsonResponse({ ...SUPABASE_STATUS, authenticated: true, email: "admin@minimarket.cl" })
+          : jsonResponse(SUPABASE_STATUS),
+      "GET /categories": () => jsonResponse([]),
+      "GET /products/overview": () => jsonResponse([]),
+    });
+
+    render(<App />);
+    expect(await screen.findByText("Conectado")).toBeInTheDocument();
+
+    // Supabase renovó el JWT (por ejemplo, tras horas con la pestaña en segundo plano).
+    fakeAuth.session = { access_token: "sb-tok-2", user: { email: "admin@minimarket.cl" } };
+    window.location.hash = "#/categorias";
+    await waitFor(() => {
+      const last = calls.filter((call) => call.path === "GET /categories").at(-1);
+      expect(authHeader(last?.init)).toBe("Bearer sb-tok-2");
+    });
+    expect(window.localStorage.getItem("sim.accessToken")).toBe("sb-tok-2");
   });
 
   it("rechaza una sesión de Supabase con un correo no autorizado", async () => {

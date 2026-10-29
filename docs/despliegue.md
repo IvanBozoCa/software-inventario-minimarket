@@ -25,9 +25,38 @@ usan dos piezas de la cuenta eunomi que ya existen para otros productos:
 ## Cómo funciona el acceso
 
 La API expone `GET /auth/status` con `mode`: `none` (abierta, equipo local),
-`supabase` (enlace mágico) o `password` (contraseña única). La interfaz guarda
+`supabase` (Google o enlace mágico) o `password` (contraseña única). La interfaz guarda
 el token en `localStorage` y lo envía como `Authorization: Bearer …`; cualquier
 401 vuelve a mostrar la pantalla de acceso.
+
+### Cuenta de Google (Supabase Auth, recomendado)
+
+La pantalla de acceso ofrece primero **Entrar con Google**
+(`signInWithOAuth({ provider: "google" })`). Google devuelve al navegador a
+`https://sim.eunomi.cl`, supabase-js guarda la sesión en ese navegador y la
+renueva sola con el token de refresco, así que no hay que volver a entrar en
+cada visita. La API valida el JWT igual que con el enlace mágico (paso 3 de
+abajo), por lo que sigue mandando `SIM_ALLOWED_EMAILS`: cualquier otra cuenta
+de Google queda fuera.
+
+Configuración (una sola vez):
+
+1. Google Cloud Console → APIs y servicios → Credenciales → *Crear ID de
+   cliente de OAuth*, tipo **Aplicación web**. *URI de redireccionamiento
+   autorizados*: `https://<ref>.supabase.co/auth/v1/callback`. La pantalla de
+   consentimiento puede quedar en modo prueba con el correo del administrador
+   como usuario de prueba.
+2. Supabase → Authentication → Sign In / Providers → **Google**: activar y
+   pegar el *Client ID* y el *Client Secret*.
+3. `https://sim.eunomi.cl/**` ya está en *Redirect URLs*; no hace falta tocar
+   el *Site URL*.
+
+Mientras Google no esté activado en Supabase, el botón muestra un aviso y el
+enlace por correo sigue disponible.
+
+Antes de cada petición la interfaz pide el token a supabase-js
+(`getSession()`), que lo renueva si venció; así una pestaña que estuvo horas en
+segundo plano no termina en la pantalla de acceso.
 
 ### Enlace mágico (Supabase Auth)
 

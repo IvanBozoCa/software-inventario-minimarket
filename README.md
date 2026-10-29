@@ -22,6 +22,7 @@ producto actual (el código se conserva en `frontend/src/legacy/`, sin montar).
 | Referencias de mercado con fuente, fecha, cobertura, tipo (habitual/promoción), vigencia, precio unitario normalizado | Precios de mercado |
 | Coincidencia exacta vs. producto equivalente al asociar una referencia | Precios de mercado · ficha |
 | Marca "Precio por verificar" a referencias con más de N días (configurable, 30 por defecto) | Precios de mercado |
+| Precarga de categorías típicas de minimarket (incluye alcoholes) | `backend/scripts/seed_categories.py` |
 | Importación CSV y precarga de referencias verificadas | `backend/scripts/seed_market_references.py` |
 
 El sistema **nunca cambia el precio de venta por su cuenta** ni calcula un
@@ -45,6 +46,7 @@ python -m venv .venv
 # Windows: .venv\Scripts\activate · Linux/macOS: source .venv/bin/activate
 pip install -r requirements.txt
 alembic upgrade head                      # crea/actualiza minimarket.db
+python scripts/seed_categories.py          # opcional: categorías típicas de minimarket
 python scripts/seed_market_references.py  # opcional: referencias verificadas
 uvicorn app.main:app --host 127.0.0.1 --port 8010
 ```

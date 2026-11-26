@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112.64" fill="#7a1fc2"/>
+  <text x="50%" y="53%" text-anchor="middle" dominant-baseline="middle" fill="#fff"
+    font-family="DejaVu Sans, Arial, sans-serif" font-weight="800" font-size="163.84" letter-spacing="5.12">SIM</text>
+  <rect x="153.6" y="358.4" width="204.8" height="17.92" rx="8.96" fill="#d8b4fe"/>
+</svg>

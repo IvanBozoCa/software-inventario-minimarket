@@ -1221,7 +1221,7 @@ tbody tr:hover td {
     bottom: 0;
     z-index: 30;
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
     gap: 0;
     padding: 0.3rem 0.5rem calc(0.3rem + env(safe-area-inset-bottom));
     background: var(--surface);
@@ -1659,5 +1659,79 @@ button.quick-edit.missing {
 
   button.quick-edit.missing {
     font-size: 1rem;
+  }
+}
+
+/* --- Usuarios y roles (fase 1 app móvil, 26-11-2026) --- */
+label.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  font-weight: 500;
+  align-self: flex-end;
+}
+.roles-help {
+  margin: 0.75rem 0 0;
+}
+.user-list {
+  display: grid;
+  gap: 0.75rem;
+}
+.user-card h3 {
+  margin: 0;
+}
+.user-card.inactive {
+  opacity: 0.7;
+}
+.user-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.user-email {
+  margin: 0.15rem 0 0;
+  overflow-wrap: anywhere;
+}
+.user-chips {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+.user-controls {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.user-controls label.field {
+  min-width: 180px;
+}
+button.link.danger-link {
+  color: var(--danger);
+}
+
+/* Aviso para instalar SIM como app en el celular. */
+.install-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.install-banner p {
+  margin: 0;
+  flex: 1 1 220px;
+}
+.install-banner .actions {
+  margin: 0;
+}
+
+/* App instalada: respeta la muesca y la barra de gestos del celular. */
+@media (display-mode: standalone) {
+  .admin-header {
+    padding-top: env(safe-area-inset-top);
   }
 }

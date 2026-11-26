@@ -9,6 +9,10 @@ import LoginPage from "./pages/LoginPage";
 import MarketPage from "./pages/MarketPage";
 import ProductDetailPage from "./pages/ProductDetailPage";
 import ProductFormPage from "./pages/ProductFormPage";
+import UsersPage from "./pages/UsersPage";
+import InstallBanner from "./components/InstallBanner";
+import { LOCAL_ADMIN, ROLE_LABEL, SessionContext } from "./session";
+import type { SessionUser } from "./session";
 import { parseRoute } from "./router";
 import type { Route } from "./router";
 
@@ -42,13 +46,25 @@ const PAGE_TITLE: Record<Route["page"], string> = {
   product: "Ficha del producto",
   categories: "Categorías y márgenes",
   market: "Precios de mercado",
+  users: "Usuarios",
 };
+
+function sessionFrom(status: AccessStatus): SessionUser {
+  if (!status.role) return LOCAL_ADMIN;
+  return {
+    name: status.name ?? status.email ?? "Usuario",
+    email: status.email ?? null,
+    role: status.role,
+    canEditPrices: status.can_edit_prices ?? status.role === "ADMIN",
+  };
+}
 
 // Íconos de la barra inferior en el celular (trazos de 24 px).
 const NAV_ICONS = {
   inventory: "M3 7.5 12 3l9 4.5v9L12 21l-9-4.5v-9Zm0 0 9 4.5m0 0 9-4.5M12 12v9",
   market: "M3 12V4h8l10 10-8 8L3 12Zm4.5-4.5h.01",
   margins: "M19 5 5 19M7.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm9 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z",
+  users: "M16 19v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 17.5V19m16 0v-1.5a3.5 3.5 0 0 0-2.5-3.35M15 4.65a3.5 3.5 0 0 1 0 6.7M13.5 8a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z",
 };
 
 function App() {
@@ -180,9 +196,13 @@ function App() {
     }
   };
 
+  const user = sessionFrom(status);
+  const isAdmin = user.role === "ADMIN";
+
   // Orden según el uso diario: el inventario (buscar, escanear, ajustar precio y
   // cantidad) es la pantalla de inicio; los márgenes se configuran pocas veces.
-  const navItems: { path: string; label: string; short: string; icon: string; active: boolean }[] = [
+  // Un vendedor solo ve el inventario.
+  const allNavItems: { path: string; label: string; short: string; icon: string; active: boolean; admin?: boolean }[] = [
     {
       path: "#/",
       label: "Inventario",
@@ -190,12 +210,16 @@ function App() {
       icon: NAV_ICONS.inventory,
       active: ["inventory", "product", "product-new", "product-edit"].includes(route.page),
     },
-    { path: "#/mercado", label: "Precios de mercado", short: "Mercado", icon: NAV_ICONS.market, active: route.page === "market" },
-    { path: "#/categorias", label: "Categorías y márgenes", short: "Márgenes", icon: NAV_ICONS.margins, active: route.page === "categories" },
+    { path: "#/mercado", label: "Precios de mercado", short: "Mercado", icon: NAV_ICONS.market, active: route.page === "market", admin: true },
+    { path: "#/categorias", label: "Categorías y márgenes", short: "Márgenes", icon: NAV_ICONS.margins, active: route.page === "categories", admin: true },
+    { path: "#/usuarios", label: "Usuarios", short: "Usuarios", icon: NAV_ICONS.users, active: route.page === "users", admin: true },
   ];
+  const navItems = allNavItems.filter((item) => isAdmin || !item.admin);
+  const adminOnlyPage = ["categories", "market", "users", "product-new", "product-edit"].includes(route.page);
 
   return (
-    <div className={`admin-shell${access === "ok" ? " with-nav" : ""}`}>
+    <SessionContext.Provider value={user}>
+    <div className={`admin-shell${access === "ok" && navItems.length > 1 ? " with-nav" : ""}`}>
       <header className="admin-header">
         <div className="admin-header-inner">
           <a className="admin-brand" href="#/" aria-label="SIM, ir al inventario">
@@ -204,7 +228,7 @@ function App() {
             </span>
             <span className="admin-brand-name">Inventario y precios</span>
           </a>
-          {access === "ok" && (
+          {access === "ok" && navItems.length > 1 && (
             <nav aria-label="Secciones" className="admin-nav">
               {navItems.map((item) => (
                 <a
@@ -240,9 +264,10 @@ function App() {
                 className="link"
                 onClick={logout}
                 aria-label={status.email ? `Cerrar sesión (${status.email})` : "Cerrar sesión"}
+                title={`${user.name} · ${ROLE_LABEL[user.role]}`}
               >
                 Cerrar sesión
-                {status.email && <span className="logout-email"> ({status.email})</span>}
+                {status.email && <span className="logout-email"> ({user.name})</span>}
               </button>
             )}
           </div>
@@ -275,6 +300,20 @@ function App() {
         )}
         {(access === "ok" || hasEntered) && (
           <div hidden={access !== "ok"}>
+            {access === "ok" && route.page === "inventory" && <InstallBanner />}
+            {!isAdmin && adminOnlyPage ? (
+              <section className="card">
+                <h2>Esta sección es solo para administradores</h2>
+                <p>
+                  Entraste como {ROLE_LABEL[user.role].toLowerCase()}. Si necesitas hacer este cambio, pídeselo a un
+                  administrador.
+                </p>
+                <a className="button primary" href="#/">
+                  Ir al inventario
+                </a>
+              </section>
+            ) : (
+              <>
             {route.page === "inventory" && <InventoryPage />}
             {route.page === "product-new" && (
               <ProductFormPage key={route.barcode ?? ""} initialBarcode={route.barcode} />
@@ -283,10 +322,14 @@ function App() {
             {route.page === "product" && <ProductDetailPage key={route.id} productId={route.id} />}
             {route.page === "categories" && <CategoriesPage />}
             {route.page === "market" && <MarketPage />}
+            {route.page === "users" && <UsersPage />}
+              </>
+            )}
           </div>
         )}
       </main>
     </div>
+    </SessionContext.Provider>
   );
 }
 

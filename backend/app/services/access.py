@@ -3,10 +3,11 @@
 Hay tres modos, decididos por variables de entorno:
 
 * `none`: sin variables. La API queda abierta (uso en el equipo local).
-* `supabase`: `SIM_SUPABASE_URL` + `SIM_ALLOWED_EMAILS`. El administrador entra
-  con un enlace mágico que Supabase Auth envía a su correo; cada petición trae
-  el JWT de Supabase (ES256, verificado con las claves públicas del proyecto)
-  y solo se aceptan los correos de la lista.
+* `supabase`: `SIM_SUPABASE_URL` + `SIM_ALLOWED_EMAILS`. Cada persona entra
+  con Google o con un enlace mágico de Supabase Auth; cada petición trae el JWT
+  de Supabase (ES256, verificado con las claves públicas del proyecto). Entran
+  los correos de la lista (dueños, siempre administradores) y los usuarios
+  activos que un administrador agregó en la app (`services/users.py`).
 * `password`: `SIM_ACCESS_PASSWORD`. Contraseña única; el token es una fecha de
   expiración firmada con HMAC, sin estado, así funciona en varias instancias
   (Vercel) y tras reinicios.
@@ -157,7 +158,19 @@ def _supabase_signing_key(token: str):
 
 def supabase_session(token: str, now: datetime | None = None) -> dict[str, object] | None:
     """Devuelve `{"email", "expires_at"}` si el JWT de Supabase es válido,
-    vigente y pertenece a un correo autorizado; si no, None."""
+    vigente y pertenece a un correo de `SIM_ALLOWED_EMAILS`; si no, None.
+
+    Los demás usuarios (agregados desde la app) se validan con
+    `supabase_claims` + la tabla de usuarios."""
+    claims = supabase_claims(token, now=now)
+    if claims is None or claims["email"] not in allowed_emails():
+        return None
+    return claims
+
+
+def supabase_claims(token: str, now: datetime | None = None) -> dict[str, object] | None:
+    """`{"email", "expires_at"}` si el JWT de Supabase es válido y vigente,
+    sin mirar si el correo tiene acceso; si no, None."""
     url = supabase_url()
     if url is None or not token:
         return None
@@ -175,7 +188,7 @@ def supabase_session(token: str, now: datetime | None = None) -> dict[str, objec
         return None
 
     email = str(claims.get("email") or "").strip().lower()
-    if not email or email not in allowed_emails():
+    if not email:
         return None
     exp = claims.get("exp")
     if not isinstance(exp, (int, float)):

@@ -16,7 +16,7 @@ usan dos piezas de la cuenta eunomi que ya existen para otros productos:
 | `MINIMARKET_DATABASE_URL` | sí | `postgresql+psycopg://postgres.<ref>:<clave>@<host-pooler>:6543/postgres` (cadena del *transaction pooler* de Supabase; funciona desde Vercel por IPv4). |
 | `SIM_DB_SCHEMA` | sí | `sim`. Todas las tablas se leen y escriben en ese esquema; en SQLite se deja vacío. |
 | `SIM_SUPABASE_URL` | sí (enlace mágico) | URL del proyecto Supabase, p. ej. `https://<ref>.supabase.co`. Activa el acceso por enlace mágico. |
-| `SIM_ALLOWED_EMAILS` | sí (enlace mágico) | Correos autorizados separados por coma. Cualquier otro correo recibe el enlace pero la API lo rechaza. |
+| `SIM_ALLOWED_EMAILS` | sí (enlace mágico) | Correos de los dueños, separados por coma: siempre entran como administradores. Las demás personas se agregan desde la pantalla Usuarios (tabla `app_users`); cualquier otro correo recibe el enlace pero la API lo rechaza. |
 | `SIM_SUPABASE_ANON_KEY` | sí (enlace mágico) | Clave pública (*publishable* o *anon*) del proyecto; la interfaz la usa para pedir el enlace. |
 | `SIM_ACCESS_PASSWORD` | alternativa | Contraseña única del administrador. Solo se usa si no está configurado el enlace mágico. Si no existe ninguna de las dos, la API queda abierta: solo para uso local. |
 | `SIM_ACCESS_SESSION_HOURS` | no | Horas de vigencia de la sesión con contraseña (12 por defecto). |
@@ -83,6 +83,33 @@ de expiración. Cambiar `SIM_ACCESS_PASSWORD` cierra todas las sesiones: el toke
 se firma con una clave derivada de la contraseña y no se guarda en la base.
 Limitación conocida: no hay límite de intentos; puede activarse en el Firewall
 de Vercel (rate limiting) sin tocar el código.
+
+## Usuarios y roles
+
+Desde la fase 1 de la app móvil (26-11-2026) cada persona entra con su propia
+cuenta y tiene un rol:
+
+| Rol | Puede |
+| --- | --- |
+| Administrador | Todo, incluida la pantalla Usuarios |
+| Vendedor | Ver inventario y fichas, escanear, ajustar cantidades y (más adelante) vender. Cambia precios solo si un administrador marca «Puede cambiar precios» |
+
+- Los correos de `SIM_ALLOWED_EMAILS` son dueños: la primera vez que entran
+  quedan registrados como administradores y no se pueden degradar desde la app.
+- Los permisos se aplican en la API (`app/dependencies.py:authorize_request` y
+  `app/services/users.py:forbidden_reason`); la interfaz solo oculta botones.
+- Siempre queda al menos un administrador activo y nadie puede quitarse su
+  propio acceso de administrador.
+
+## App instalable (PWA)
+
+`frontend/public/manifest.webmanifest` y `frontend/public/sw.js` permiten
+instalar SIM en el celular. El service worker solo guarda la interfaz (HTML,
+JS, CSS, íconos); la API va a otro dominio y nunca se guarda. Para forzar que
+todos los celulares tomen una versión nueva del service worker, cambiar
+`VERSION` en `sw.js`. En iPhone, Safari no permite imprimir por Bluetooth
+desde la web: para eso hará falta envolver la app (Capacitor) en la fase de la
+boleta.
 
 ## Migraciones en Supabase
 

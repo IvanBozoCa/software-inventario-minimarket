@@ -1509,3 +1509,155 @@ td.price {
   padding: 0 0.2rem;
   min-height: 0;
 }
+
+/* Inventario: precio y cantidad se editan en la misma lista. */
+button.quick-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 34px;
+  padding: 0.2rem 0.45rem;
+  margin: -0.2rem -0.45rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  font-weight: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+button.quick-edit .pencil {
+  color: var(--accent);
+  opacity: 0.55;
+  flex-shrink: 0;
+}
+
+button.quick-edit:hover,
+button.quick-edit:focus-visible {
+  border-color: var(--accent-border, var(--border));
+  background: var(--accent-bg, transparent);
+}
+
+button.quick-edit:hover .pencil,
+button.quick-edit:focus-visible .pencil {
+  opacity: 1;
+}
+
+button.quick-edit.missing {
+  margin: 0;
+  border: 1px dashed var(--danger);
+  color: var(--danger);
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.quick-edit-form {
+  display: inline-block;
+  text-align: left;
+  min-width: 13rem;
+}
+
+.quick-edit-row {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.quick-edit-row input {
+  width: 7rem;
+  min-width: 0;
+  flex: 1 1 auto;
+  min-height: 38px;
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: right;
+}
+
+.quick-edit-row button {
+  min-height: 38px;
+  padding: 0.3rem 0.7rem;
+  white-space: nowrap;
+}
+
+.quick-edit-msg {
+  margin: 0.3rem 0 0;
+  max-width: 18rem;
+  font-size: 0.82rem;
+  font-weight: 400;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.quick-edit-msg.danger {
+  color: var(--danger);
+}
+
+.quick-edit-msg.warn {
+  color: var(--warn);
+}
+
+.noprice-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem 1rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius, 12px);
+  color: var(--text-h);
+  font-weight: 600;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 1.5rem;
+  transform: translateX(-50%);
+  z-index: 40;
+  max-width: calc(100vw - 2rem);
+  padding: 0.7rem 1.1rem;
+  border-radius: 999px;
+  background: var(--text-h);
+  color: var(--app-bg, #fff);
+  font-size: 0.92rem;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+}
+
+@media (max-width: 720px) {
+  /* Sobre la barra de navegación inferior. */
+  .toast {
+    bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  table.compact-cards td.price:has(.quick-edit-form),
+  table.compact-cards td:has(> .quick-edit-form) {
+    width: 100%;
+  }
+
+  .quick-edit-form {
+    display: block;
+    min-width: 0;
+  }
+
+  .quick-edit-row input {
+    min-height: 44px;
+    font-size: 1.1rem;
+    text-align: left;
+  }
+
+  .quick-edit-row button {
+    min-height: 44px;
+  }
+
+  button.quick-edit {
+    min-height: 40px;
+  }
+
+  button.quick-edit.missing {
+    font-size: 1rem;
+  }
+}

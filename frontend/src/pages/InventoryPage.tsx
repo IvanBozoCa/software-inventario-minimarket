@@ -1,16 +1,34 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 import type { Category, OverviewRow } from "../api";
 import { Alert } from "../components/Alert";
-import { formatClp, formatContent, formatPercent, formatQuantity } from "../format";
+import {
+  MAX_PRICE_CLP,
+  STOCK_UNIT_LABEL,
+  formatClp,
+  formatContent,
+  formatPercent,
+  formatQuantity,
+  priceWarning,
+  readNumberField,
+  toNumberInput,
+} from "../format";
 import BarcodeScanner from "../components/BarcodeScanner";
+import QuickEdit from "../components/QuickEdit";
 import { hashQuery, navigate, replaceHashQuery } from "../router";
 import { findProductByCode } from "../scanner";
+import { useAutoClear } from "../useAutoClear";
 
-type Filter = "all" | "review" | "cost" | "market";
+type Filter = "all" | "noprice" | "review" | "cost" | "market";
 type SortKey = "name" | "price" | "margin" | "status";
 
-const FILTER_PARAM: Record<Filter, string> = { all: "", review: "revisar", cost: "costo", market: "mercado" };
+const FILTER_PARAM: Record<Filter, string> = {
+  all: "",
+  noprice: "sin-precio",
+  review: "revisar",
+  cost: "costo",
+  market: "mercado",
+};
 
 function readFilter(value: string | null): Filter {
   const found = (Object.keys(FILTER_PARAM) as Filter[]).find((key) => FILTER_PARAM[key] === value);
@@ -18,6 +36,7 @@ function readFilter(value: string | null): Filter {
 }
 
 function statusRank(row: OverviewRow): number {
+  if (row.sale_price_clp === null) return -1;
   if (row.needs_review) return 0;
   if (row.cost_pending) return 1;
   if (row.margins_pending) return 2;
@@ -63,6 +82,11 @@ export default function InventoryPage() {
   const [scanning, setScanning] = useState(false);
   const [lookup, setLookup] = useState("");
   const [scanError, setScanError] = useState("");
+  // Solo una celda se edita a la vez: el precio o la cantidad de un producto.
+  const [editing, setEditing] = useState<{ id: string; field: "price" | "stock" } | null>(null);
+  const [saved, setSaved] = useState("");
+  const clearSaved = useCallback(() => setSaved(""), []);
+  useAutoClear(saved, clearSaved, 4000);
 
   useEffect(() => {
     api
@@ -106,6 +130,7 @@ export default function InventoryPage() {
 
   const visible = rows
     .filter((row) => {
+      if (filter === "noprice") return row.sale_price_clp === null;
       if (filter === "review") return row.needs_review;
       if (filter === "cost") return row.cost_pending;
       if (filter === "market") return row.market_reference_count === 0;
@@ -149,7 +174,39 @@ export default function InventoryPage() {
     }
   }
 
+  function updateRow(id: string, changes: Partial<OverviewRow>) {
+    setRows((current) => current.map((row) => (row.id === id ? { ...row, ...changes } : row)));
+  }
+
+  // El precio pasa por la misma API que la ficha, así queda en el historial.
+  // Al ponerle precio a un producto que no tenía, se abre el siguiente sin
+  // precio de la lista para seguir de corrido.
+  async function savePrice(row: OverviewRow, price: number) {
+    const next =
+      row.sale_price_clp === null
+        ? visible.find((other, index) => index > visible.indexOf(row) && other.sale_price_clp === null)
+        : undefined;
+    await api.updatePrice(row.id, price, "Desde el inventario");
+    const cost = row.total_unit_cost_clp === null ? null : Number(row.total_unit_cost_clp);
+    updateRow(row.id, {
+      sale_price_clp: price,
+      current_gross_margin: cost === null || price === 0 ? null : String((price - cost) / price),
+    });
+    setSaved(`Precio de ${row.name}: ${formatClp(price)}.`);
+    setEditing(next ? { id: next.id, field: "price" } : null);
+    setAttempt((value) => value + 1);
+  }
+
+  async function saveStock(row: OverviewRow, quantity: string) {
+    await api.updateStock(row.id, quantity, "Conteo desde el inventario");
+    updateRow(row.id, { quantity });
+    setSaved(`Cantidad de ${row.name}: ${formatQuantity(quantity, row.stock_unit)}.`);
+    setEditing(null);
+    setAttempt((value) => value + 1);
+  }
+
   const counts = {
+    noprice: rows.filter((r) => r.sale_price_clp === null).length,
     review: rows.filter((r) => r.needs_review).length,
     cost: rows.filter((r) => r.cost_pending).length,
     market: rows.filter((r) => r.market_reference_count === 0).length,
@@ -181,6 +238,21 @@ export default function InventoryPage() {
       )}
       {lookup && <Alert kind="info">{lookup}</Alert>}
       {scanError && <Alert kind="danger">No se pudo buscar el código. {scanError}</Alert>}
+      {saved && (
+        <div className="toast" role="status">
+          ✓ {saved}
+        </div>
+      )}
+      {counts.noprice > 0 && filter === "all" && (
+        <div className="noprice-banner">
+          <span>
+            {counts.noprice === 1 ? "1 producto no tiene" : `${counts.noprice} productos no tienen`} precio de venta.
+          </span>
+          <button type="button" className="primary" onClick={() => setFilter("noprice")}>
+            Ponerles precio
+          </button>
+        </div>
+      )}
 
       <div className="toolbar">
         <input
@@ -215,6 +287,14 @@ export default function InventoryPage() {
 
       <div className="filter-tabs" role="group" aria-label="Filtrar por estado">
         <FilterChip label="Todos" count={rows.length} value="all" current={filter} onSelect={setFilter} />
+        <FilterChip
+          label="Sin precio"
+          count={counts.noprice}
+          tone="danger"
+          value="noprice"
+          current={filter}
+          onSelect={setFilter}
+        />
         <FilterChip
           label="Precio por revisar"
           count={counts.review}
@@ -318,14 +398,87 @@ export default function InventoryPage() {
                   </td>
                   <td data-label="Categoría">{row.category_name ?? <span className="muted">Sin categoría</span>}</td>
                   <td className="num" data-label="Cantidad">
-                    {row.track_stock ? formatQuantity(row.quantity, row.stock_unit) : "—"}
+                    {!row.track_stock ? (
+                      "—"
+                    ) : editing?.id === row.id && editing.field === "stock" ? (
+                      <QuickEdit
+                        label={`Cantidad de ${row.name} (${STOCK_UNIT_LABEL[row.stock_unit]})`}
+                        initial={toNumberInput(row.quantity)}
+                        inputMode={row.stock_unit === "UNIT" ? "numeric" : "decimal"}
+                        placeholder={row.stock_unit === "UNIT" ? "Ej.: 24" : "Ej.: 1,5"}
+                        validate={(raw) => readQuantity(raw, row)}
+                        onSave={(quantity) => saveStock(row, quantity)}
+                        onCancel={() => setEditing(null)}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        className="quick-edit"
+                        title="Cambiar cantidad"
+                        aria-label={`Cambiar cantidad de ${row.name}`}
+                        onClick={() => {
+                          setSaved("");
+                          setEditing({ id: row.id, field: "stock" });
+                        }}
+                      >
+                        {formatQuantity(row.quantity, row.stock_unit)}
+                        <PencilIcon />
+                      </button>
+                    )}
                   </td>
-                  <td className="num price">{formatClp(row.sale_price_clp)}</td>
+                  <td className="num price">
+                    {editing?.id === row.id && editing.field === "price" ? (
+                      <QuickEdit
+                        key={row.id}
+                        label={`Precio de venta de ${row.name}`}
+                        initial={toNumberInput(row.sale_price_clp)}
+                        inputMode="numeric"
+                        placeholder="Ej.: 1.990"
+                        validate={readPrice}
+                        confirm={(price) =>
+                          priceWarning(
+                            price,
+                            row.sale_price_clp,
+                            row.total_unit_cost_clp === null ? null : Number(row.total_unit_cost_clp),
+                          )
+                        }
+                        onSave={(price) => savePrice(row, price)}
+                        onCancel={() => setEditing(null)}
+                      />
+                    ) : row.sale_price_clp === null ? (
+                      <button
+                        type="button"
+                        className="quick-edit missing"
+                        aria-label={`Poner precio a ${row.name}`}
+                        onClick={() => {
+                          setSaved("");
+                          setEditing({ id: row.id, field: "price" });
+                        }}
+                      >
+                        + Poner precio
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="quick-edit"
+                        title="Cambiar precio"
+                        aria-label={`Cambiar precio de ${row.name}: ${formatClp(row.sale_price_clp)}`}
+                        onClick={() => {
+                          setSaved("");
+                          setEditing({ id: row.id, field: "price" });
+                        }}
+                      >
+                        {formatClp(row.sale_price_clp)}
+                        <PencilIcon />
+                      </button>
+                    )}
+                  </td>
                   <td className="num" data-label="Costo">{formatClp(row.total_unit_cost_clp)}</td>
                   <td className="num" data-label="Margen">{formatPercent(row.current_gross_margin)}</td>
                   <td>
                     <div className="chips">
                       {!row.active && <span className="chip">Inactivo</span>}
+                      {row.sale_price_clp === null && <span className="chip danger">Sin precio</span>}
                       {row.needs_review && <span className="chip danger">Revisar precio</span>}
                       {row.cost_pending && <span className="chip warn">Costo pendiente</span>}
                       {row.margins_pending && !row.cost_pending && (
@@ -347,6 +500,37 @@ export default function InventoryPage() {
         )}
       </div>
     </section>
+  );
+}
+
+function readPrice(raw: string): number {
+  return Number(
+    readNumberField(raw, "el precio", { required: true, integer: true, max: MAX_PRICE_CLP, example: "1.990" }),
+  );
+}
+
+function readQuantity(raw: string, row: OverviewRow): string {
+  const value = readNumberField(raw, "la cantidad", {
+    required: true,
+    example: row.stock_unit === "UNIT" ? "24" : "1,5",
+  }) as string;
+  if (row.stock_unit === "UNIT" && !Number.isInteger(Number(value))) {
+    throw new Error("Este producto se cuenta por unidades: la cantidad va sin decimales.");
+  }
+  return value;
+}
+
+function PencilIcon() {
+  return (
+    <svg className="pencil" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+      <path
+        d="M11.3 2.3a1.4 1.4 0 0 1 2 2L5.6 12l-2.8.8.8-2.8z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

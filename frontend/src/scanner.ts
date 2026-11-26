@@ -180,10 +180,13 @@ const CAMERA_CONSTRAINTS: MediaStreamConstraints = {
 /**
  * Muestra la cámara trasera en `video` y llama a `onCode` con el primer código
  * leído. La lectura se detiene sola al encontrar un código o con `stop()`.
+ * Con `continuous` sigue leyendo (modo caja, como una pistola): quien llama
+ * descarta las lecturas repetidas del mismo código.
  */
 export async function startCameraScan(
   video: HTMLVideoElement,
   onCode: (code: string) => void,
+  options: { continuous?: boolean } = {},
 ): Promise<ScanControls> {
   if (!cameraSupported()) {
     throw new CameraUnavailableError(
@@ -234,9 +237,12 @@ export async function startCameraScan(
       try {
         const value = await readFrame();
         if (value && !stopped) {
-          stop();
+          if (!options.continuous) {
+            stop();
+            onCode(value);
+            return;
+          }
           onCode(value);
-          return;
         }
       } catch {
         // cuadro sin código o ilegible: se reintenta

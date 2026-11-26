@@ -67,6 +67,19 @@ class Sale(Base):
         onupdate=utc_now,
     )
 
+    # Caja del celular (fase 2): quién vendió, cuándo se cerró y el
+    # identificador que genera el celular para no duplicar una venta si la
+    # señal se corta y se reintenta.
+    seller_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("app_users.id"), nullable=True, index=True
+    )
+    seller_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    client_ref: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    void_reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    voided_by_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
     items: Mapped[list[SaleItem]] = relationship(
         "SaleItem",
         back_populates="sale",

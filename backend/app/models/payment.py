@@ -18,6 +18,7 @@ def utc_now() -> datetime:
 class PaymentMethod(str, PythonEnum):
     CASH = "CASH"
     CARD = "CARD"
+    TRANSFER = "TRANSFER"
 
 
 class PaymentStatus(str, PythonEnum):

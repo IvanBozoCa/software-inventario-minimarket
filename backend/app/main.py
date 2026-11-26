@@ -12,6 +12,7 @@ from app.routers.products import router as products_router
 from app.routers.sales import router as sales_router
 from app.dependencies import authorize_request
 from app.routers.users import router as users_router
+from app.routers.pos import router as pos_router
 
 # Cada ruta exige sesión (salvo las públicas) y respeta el rol del usuario.
 app = FastAPI(
@@ -44,6 +45,7 @@ app.include_router(market_router)
 app.include_router(sales_router)
 app.include_router(admin_security_router)
 app.include_router(users_router)
+app.include_router(pos_router)
 
 
 @app.get("/health")

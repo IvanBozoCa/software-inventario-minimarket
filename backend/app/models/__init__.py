@@ -1,3 +1,4 @@
+from app.models.app_user import AppUser, UserRole
 from app.models.admin_security import AdminSecurity, AuditLog
 from app.models.category import Category
 from app.models.market import (
@@ -18,6 +19,8 @@ from app.models.sale import Sale, SaleItem, SaleItemType, SaleStatus
 from app.models.stock_movement import StockMovement, StockMovementType
 
 __all__ = [
+    "AppUser",
+    "UserRole",
     "AdminSecurity",
     "AppSetting",
     "ContentUnit",

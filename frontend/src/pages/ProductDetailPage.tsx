@@ -5,6 +5,7 @@ import type { MarketReference, MatchType, Product, ProductDetail, StockUnit } fr
 import { Alert } from "../components/Alert";
 import { useAutoClear } from "../useAutoClear";
 import { ReferenceCard } from "../components/ReferenceCard";
+import { useSession } from "../session";
 import {
   MAX_PRICE_CLP,
   SCOPE_LABEL,
@@ -27,6 +28,7 @@ type Panel = "none" | "price" | "cost" | "stock" | "link";
 const DANGER_WARNINGS = new Set(["PRICE_BELOW_COST", "MARGIN_BELOW_MIN", "COST_INCREASED"]);
 
 export default function ProductDetailPage({ productId }: { productId: string }) {
+  const session = useSession();
   const validId = isUuid(productId);
   const [detail, setDetail] = useState<ProductDetail | null>(null);
   const [loadError, setLoadError] = useState(validId ? "" : "Producto no encontrado");
@@ -127,6 +129,7 @@ export default function ProductDetailPage({ productId }: { productId: string }) 
           </h2>
           <p>{subtitle}</p>
         </div>
+        {session.isAdmin && (
         <div className="actions" style={{ marginTop: 0 }}>
           <a className="button" href={`#/productos/${product.id}/editar`}>
             Editar ficha
@@ -146,6 +149,7 @@ export default function ProductDetailPage({ productId }: { productId: string }) 
             </button>
           )}
         </div>
+        )}
       </div>
 
       {confirmDeactivate && product.active && (
@@ -194,9 +198,11 @@ export default function ProductDetailPage({ productId }: { productId: string }) 
         <div className="stat">
           <span className="label">Precio de venta actual</span>
           <span className="value">{formatClp(product.sale_price_clp)}</span>
-          <button type="button" className="link" onClick={() => openPanel("price")}>
-            Cambiar precio
-          </button>
+          {session.canEditPrices && (
+            <button type="button" className="link" onClick={() => openPanel("price")}>
+              Cambiar precio
+            </button>
+          )}
         </div>
         <div className="stat">
           <span className="label">Último costo unitario</span>
@@ -208,9 +214,11 @@ export default function ProductDetailPage({ productId }: { productId: string }) 
                 ? "sin costo adicional de abastecimiento"
                 : "costo pendiente"}
           </span>
-          <button type="button" className="link" onClick={() => openPanel("cost")}>
-            {pricing.unit_cost_clp ? "Actualizar costo" : "Registrar costo"}
-          </button>
+          {session.isAdmin && (
+            <button type="button" className="link" onClick={() => openPanel("cost")}>
+              {pricing.unit_cost_clp ? "Actualizar costo" : "Registrar costo"}
+            </button>
+          )}
         </div>
         <div className={`stat ${marginAlert ? "danger" : ""}`}>
           <span className="label">Margen bruto actual</span>

@@ -1,6 +1,8 @@
 // Cliente HTTP mínimo para la API local de SIM. Todas las funciones lanzan
 // Error con el mensaje en español que devuelve el backend.
 
+import type { UserRole } from "./session";
+
 export const API_BASE =
   (import.meta.env?.VITE_API_BASE as string | undefined) ?? "http://127.0.0.1:8010";
 
@@ -399,6 +401,21 @@ export type AccessStatus = {
   supabase_url?: string | null;
   supabase_anon_key?: string | null;
   email?: string | null;
+  name?: string | null;
+  role?: UserRole | null;
+  can_edit_prices?: boolean;
+};
+
+export type AppUser = {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  can_edit_prices: boolean;
+  active: boolean;
+  owner: boolean;
+  created_at: string;
+  last_seen_at: string | null;
 };
 
 export const api = {
@@ -487,6 +504,12 @@ export const api = {
     }),
   importCsv: (csv: string) =>
     request<ImportResult>("/market/import", { method: "POST", body: json({ csv }) }),
+
+  users: () => request<AppUser[]>("/users"),
+  createUser: (body: { email: string; name: string; role: UserRole; can_edit_prices: boolean }) =>
+    request<AppUser>("/users", { method: "POST", body: json(body) }),
+  updateUser: (id: string, body: Partial<Pick<AppUser, "name" | "role" | "can_edit_prices" | "active">>) =>
+    request<AppUser>(`/users/${id}`, { method: "PATCH", body: json(body) }),
 
   settings: () => request<{ market_stale_days: number }>("/settings"),
   updateSettings: (market_stale_days: number) =>

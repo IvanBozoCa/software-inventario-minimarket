@@ -4,7 +4,8 @@ export type Route =
   | { page: "product-edit"; id: string }
   | { page: "product"; id: string }
   | { page: "categories" }
-  | { page: "market" };
+  | { page: "market" }
+  | { page: "users" };
 
 export function parseRoute(hash: string): Route {
   const [path, query = ""] = hash.replace(/^#\/?/, "").split("?");
@@ -18,6 +19,7 @@ export function parseRoute(hash: string): Route {
   if (head === "productos" && second) return { page: "product", id: second };
   if (head === "categorias") return { page: "categories" };
   if (head === "mercado") return { page: "market" };
+  if (head === "usuarios") return { page: "users" };
   return { page: "inventory" };
 }
 

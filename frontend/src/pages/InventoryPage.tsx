@@ -15,6 +15,7 @@ import {
 } from "../format";
 import BarcodeScanner from "../components/BarcodeScanner";
 import QuickEdit from "../components/QuickEdit";
+import { useSession } from "../session";
 import { hashQuery, navigate, replaceHashQuery } from "../router";
 import { findProductByCode } from "../scanner";
 import { useAutoClear } from "../useAutoClear";
@@ -62,6 +63,7 @@ function compareRows(a: OverviewRow, b: OverviewRow, key: SortKey): number {
 }
 
 export default function InventoryPage() {
+  const session = useSession();
   // Los filtros viven en la dirección (#/?q=…&filtro=revisar) para que se
   // conserven al volver desde la ficha de un producto.
   const [initialQuery] = useState(() => hashQuery());
@@ -164,6 +166,10 @@ export default function InventoryPage() {
     setScanError("");
     try {
       const product = await findProductByCode(code);
+      if (!product && !session.isAdmin) {
+        setScanError(`El código ${code} no está en SIM. Pídele a un administrador que agregue el producto.`);
+        return;
+      }
       navigate(
         product ? `/productos/${product.id}` : `/productos/nuevo?codigo=${encodeURIComponent(code)}`,
       );
@@ -223,9 +229,11 @@ export default function InventoryPage() {
           <button type="button" onClick={() => setScanning(true)} disabled={Boolean(lookup)}>
             Escanear código
           </button>
-          <a className="button primary" href="#/productos/nuevo">
-            Nuevo producto
-          </a>
+          {session.isAdmin && (
+            <a className="button primary" href="#/productos/nuevo">
+              Nuevo producto
+            </a>
+          )}
         </div>
       </div>
 
@@ -249,7 +257,7 @@ export default function InventoryPage() {
             {counts.noprice === 1 ? "1 producto no tiene" : `${counts.noprice} productos no tienen`} precio de venta.
           </span>
           <button type="button" className="primary" onClick={() => setFilter("noprice")}>
-            Ponerles precio
+            {session.canEditPrices ? "Ponerles precio" : "Ver cuáles"}
           </button>
         </div>
       )}
@@ -427,7 +435,13 @@ export default function InventoryPage() {
                     )}
                   </td>
                   <td className="num price">
-                    {editing?.id === row.id && editing.field === "price" ? (
+                    {!session.canEditPrices ? (
+                      row.sale_price_clp === null ? (
+                        <span className="muted">Sin precio</span>
+                      ) : (
+                        formatClp(row.sale_price_clp)
+                      )
+                    ) : editing?.id === row.id && editing.field === "price" ? (
                       <QuickEdit
                         key={row.id}
                         label={`Precio de venta de ${row.name}`}

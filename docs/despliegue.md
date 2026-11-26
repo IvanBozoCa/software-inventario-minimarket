@@ -111,6 +111,22 @@ todos los celulares tomen una versión nueva del service worker, cambiar
 desde la web: para eso hará falta envolver la app (Capacitor) en la fase de la
 boleta.
 
+## Caja en el celular (#/caja) y ventas del día (#/ventas)
+
+- El carro vive en el celular (se guarda en el navegador, sobrevive a cerrar
+  la pantalla) y la venta completa se envía en un solo `POST /pos/sales`.
+- `client_ref` lo genera el celular al abrir el cobro: si se corta la señal y
+  se vuelve a tocar «Confirmar venta», el servidor devuelve la misma venta en
+  vez de duplicarla.
+- El servidor usa sus propios precios. Si el celular tenía un precio viejo,
+  responde 409, la caja recarga la lista y pide revisar el total.
+- Cada venta descuenta el stock (movimiento `SALE`) y queda a nombre de quien
+  la hizo. Se permite quedar en negativo, con aviso, para no frenar la caja.
+- Solo un administrador anula, con motivo; el stock vuelve con `SALE_REVERSAL`.
+- Los días se cuentan en hora de Chile (`America/Santiago`).
+- La boleta todavía se emite aparte (fase 3); con tarjeta, el voucher vale como
+  boleta.
+
 ## Migraciones en Supabase
 
 Alembic crea las tablas en el esquema indicado por `SIM_DB_SCHEMA`:

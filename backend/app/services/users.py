@@ -29,6 +29,7 @@ READ_METHODS = {"GET", "HEAD", "OPTIONS"}
 _SELLER_WRITES = (
     re.compile(r"^/products/[^/]+/stock$"),
     re.compile(r"^/sales(/.*)?$"),
+    re.compile(r"^/pos/sales$"),
 )
 _PRICE_WRITE = re.compile(r"^/products/[^/]+/price$")
 # Lecturas reservadas al administrador.

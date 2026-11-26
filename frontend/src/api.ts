@@ -418,6 +418,57 @@ export type AppUser = {
   last_seen_at: string | null;
 };
 
+export type PaymentMethod = "CASH" | "CARD" | "TRANSFER";
+
+export type CatalogItem = {
+  id: string;
+  label: string;
+  name: string;
+  brand: string | null;
+  variant: string | null;
+  barcode: string | null;
+  category_name: string | null;
+  sale_price_clp: number | null;
+  sale_mode: "UNIT" | "WEIGHT" | "FREE_AMOUNT";
+  stock_unit: StockUnit;
+  track_stock: boolean;
+  quantity: string | null;
+};
+
+export type SaleLineInput = {
+  product_id: string | null;
+  quantity: string;
+  unit_price_clp: number | null;
+  description?: string | null;
+};
+
+export type PosSale = {
+  id: string;
+  status: "COMPLETED" | "VOIDED" | "DRAFT" | "PAYMENT_PENDING" | "CANCELLED";
+  total_clp: number;
+  payment_method: PaymentMethod | null;
+  cash_received_clp: number | null;
+  change_clp: number | null;
+  seller_id: string | null;
+  seller_name: string | null;
+  completed_at: string | null;
+  voided_at: string | null;
+  void_reason: string | null;
+  voided_by_name: string | null;
+  lines: { product_id: string | null; description: string; quantity: string; unit_price_clp: number; line_total_clp: number }[];
+  warnings: string[];
+};
+
+export type DaySales = {
+  day: string;
+  count: number;
+  total_clp: number;
+  by_method: Record<PaymentMethod, number>;
+  sellers: { seller_id: string | null; seller_name: string; count: number; total_clp: number }[];
+  voided_count: number;
+  sales: PosSale[];
+};
+
 export const api = {
   health: () => request<{ status: string }>("/health"),
   accessStatus: () => request<AccessStatus>("/auth/status"),
@@ -504,6 +555,23 @@ export const api = {
     }),
   importCsv: (csv: string) =>
     request<ImportResult>("/market/import", { method: "POST", body: json({ csv }) }),
+
+  posCatalog: () => request<CatalogItem[]>("/pos/catalog"),
+  createSale: (body: {
+    client_ref: string;
+    lines: SaleLineInput[];
+    payment_method: PaymentMethod;
+    cash_received_clp: number | null;
+    expected_total_clp: number;
+  }) => request<PosSale>("/pos/sales", { method: "POST", body: json(body) }),
+  daySales: (day?: string, sellerId?: string) => {
+    const query = new URLSearchParams();
+    if (day) query.set("day", day);
+    if (sellerId) query.set("seller_id", sellerId);
+    return request<DaySales>(`/pos/sales?${query.toString()}`);
+  },
+  voidSale: (id: string, reason: string) =>
+    request<PosSale>(`/pos/sales/${id}/void`, { method: "POST", body: json({ reason }) }),
 
   users: () => request<AppUser[]>("/users"),
   createUser: (body: { email: string; name: string; role: UserRole; can_edit_prices: boolean }) =>

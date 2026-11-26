@@ -7,8 +7,11 @@ import CategoriesPage from "./pages/CategoriesPage";
 import InventoryPage from "./pages/InventoryPage";
 import LoginPage from "./pages/LoginPage";
 import MarketPage from "./pages/MarketPage";
+import PosPage from "./pages/PosPage";
 import ProductDetailPage from "./pages/ProductDetailPage";
 import ProductFormPage from "./pages/ProductFormPage";
+import SalesPage from "./pages/SalesPage";
+import SettingsPage from "./pages/SettingsPage";
 import UsersPage from "./pages/UsersPage";
 import InstallBanner from "./components/InstallBanner";
 import { LOCAL_ADMIN, ROLE_LABEL, SessionContext } from "./session";
@@ -47,6 +50,9 @@ const PAGE_TITLE: Record<Route["page"], string> = {
   categories: "Categorías y márgenes",
   market: "Precios de mercado",
   users: "Usuarios",
+  pos: "Caja",
+  sales: "Ventas",
+  settings: "Ajustes",
 };
 
 function sessionFrom(status: AccessStatus): SessionUser {
@@ -63,8 +69,9 @@ function sessionFrom(status: AccessStatus): SessionUser {
 const NAV_ICONS = {
   inventory: "M3 7.5 12 3l9 4.5v9L12 21l-9-4.5v-9Zm0 0 9 4.5m0 0 9-4.5M12 12v9",
   market: "M3 12V4h8l10 10-8 8L3 12Zm4.5-4.5h.01",
-  margins: "M19 5 5 19M7.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm9 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z",
-  users: "M16 19v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 17.5V19m16 0v-1.5a3.5 3.5 0 0 0-2.5-3.35M15 4.65a3.5 3.5 0 0 1 0 6.7M13.5 8a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z",
+  pos: "M3 4h2l2.4 11.2a1 1 0 0 0 1 .8h9.2a1 1 0 0 0 1-.76L20.5 8H6.2M9 20.5h.01M17 20.5h.01",
+  sales: "M6 3h12v18l-3-2-3 2-3-2-3 2V3Zm3 5h6m-6 4h6m-6 4h3",
+  settings: "M4 6h10m4 0h2M4 12h4m4 0h8M4 18h12m4 0h0M16 4v4M10 10v4M18 16v4",
 };
 
 function App() {
@@ -199,10 +206,11 @@ function App() {
   const user = sessionFrom(status);
   const isAdmin = user.role === "ADMIN";
 
-  // Orden según el uso diario: el inventario (buscar, escanear, ajustar precio y
-  // cantidad) es la pantalla de inicio; los márgenes se configuran pocas veces.
-  // Un vendedor solo ve el inventario.
+  // Orden según el uso diario: la caja primero; el inventario (buscar, escanear,
+  // ajustar precio y cantidad) después; lo que se configura pocas veces va en Ajustes.
   const allNavItems: { path: string; label: string; short: string; icon: string; active: boolean; admin?: boolean }[] = [
+    { path: "#/caja", label: "Caja", short: "Caja", icon: NAV_ICONS.pos, active: route.page === "pos" },
+    { path: "#/ventas", label: "Ventas", short: "Ventas", icon: NAV_ICONS.sales, active: route.page === "sales" },
     {
       path: "#/",
       label: "Inventario",
@@ -211,11 +219,17 @@ function App() {
       active: ["inventory", "product", "product-new", "product-edit"].includes(route.page),
     },
     { path: "#/mercado", label: "Precios de mercado", short: "Mercado", icon: NAV_ICONS.market, active: route.page === "market", admin: true },
-    { path: "#/categorias", label: "Categorías y márgenes", short: "Márgenes", icon: NAV_ICONS.margins, active: route.page === "categories", admin: true },
-    { path: "#/usuarios", label: "Usuarios", short: "Usuarios", icon: NAV_ICONS.users, active: route.page === "users", admin: true },
+    {
+      path: "#/ajustes",
+      label: "Ajustes",
+      short: "Ajustes",
+      icon: NAV_ICONS.settings,
+      active: ["settings", "categories", "users"].includes(route.page),
+      admin: true,
+    },
   ];
   const navItems = allNavItems.filter((item) => isAdmin || !item.admin);
-  const adminOnlyPage = ["categories", "market", "users", "product-new", "product-edit"].includes(route.page);
+  const adminOnlyPage = ["categories", "market", "users", "settings", "product-new", "product-edit"].includes(route.page);
 
   return (
     <SessionContext.Provider value={user}>
@@ -323,6 +337,9 @@ function App() {
             {route.page === "categories" && <CategoriesPage />}
             {route.page === "market" && <MarketPage />}
             {route.page === "users" && <UsersPage />}
+            {route.page === "settings" && <SettingsPage />}
+            {route.page === "pos" && <PosPage />}
+            {route.page === "sales" && <SalesPage />}
               </>
             )}
           </div>

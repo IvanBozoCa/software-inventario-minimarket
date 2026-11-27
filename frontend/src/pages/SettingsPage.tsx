@@ -1,6 +1,7 @@
 /** Ajustes del administrador: lo que se configura pocas veces. */
 export default function SettingsPage() {
   const items = [
+    { href: "#/codigos", title: "Códigos de barra", text: "Escanea los envases para asignar su código a cada producto." },
     { href: "#/categorias", title: "Categorías y márgenes", text: "Margen por categoría para el precio sugerido." },
     { href: "#/usuarios", title: "Usuarios", text: "Quién puede entrar a SIM y qué puede hacer." },
   ];

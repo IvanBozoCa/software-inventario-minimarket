@@ -7,6 +7,7 @@ import CategoriesPage from "./pages/CategoriesPage";
 import InventoryPage from "./pages/InventoryPage";
 import LoginPage from "./pages/LoginPage";
 import MarketPage from "./pages/MarketPage";
+import CodesPage from "./pages/CodesPage";
 import PosPage from "./pages/PosPage";
 import ProductDetailPage from "./pages/ProductDetailPage";
 import ProductFormPage from "./pages/ProductFormPage";
@@ -51,6 +52,7 @@ const PAGE_TITLE: Record<Route["page"], string> = {
   market: "Precios de mercado",
   users: "Usuarios",
   pos: "Caja",
+  codes: "Códigos de barra",
   sales: "Ventas",
   settings: "Ajustes",
 };
@@ -224,12 +226,12 @@ function App() {
       label: "Ajustes",
       short: "Ajustes",
       icon: NAV_ICONS.settings,
-      active: ["settings", "categories", "users"].includes(route.page),
+      active: ["settings", "categories", "users", "codes"].includes(route.page),
       admin: true,
     },
   ];
   const navItems = allNavItems.filter((item) => isAdmin || !item.admin);
-  const adminOnlyPage = ["categories", "market", "users", "settings", "product-new", "product-edit"].includes(route.page);
+  const adminOnlyPage = ["categories", "market", "users", "settings", "codes", "product-new", "product-edit"].includes(route.page);
 
   return (
     <SessionContext.Provider value={user}>
@@ -339,6 +341,7 @@ function App() {
             {route.page === "users" && <UsersPage />}
             {route.page === "settings" && <SettingsPage />}
             {route.page === "pos" && <PosPage />}
+            {route.page === "codes" && <CodesPage key={window.location.hash} />}
             {route.page === "sales" && <SalesPage />}
               </>
             )}

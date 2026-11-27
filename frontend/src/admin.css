@@ -2227,3 +2227,67 @@ button.link.danger-link {
 .pos-checkout {
   scroll-margin-bottom: calc(6rem + env(safe-area-inset-bottom));
 }
+
+/* Códigos de barra (#/codigos) */
+.codes-progress {
+  margin: 0 0 0.75rem;
+}
+
+.codes .pos-camera {
+  margin-bottom: 0.75rem;
+}
+
+.codes-step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.75rem;
+  border-color: var(--accent);
+}
+
+.codes-step p {
+  margin: 0;
+}
+
+.codes-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.codes-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 52px;
+  text-align: left;
+  font-weight: 400;
+  background: var(--surface);
+}
+
+.codes-list button.selected {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.codes-code {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.product-code {
+  margin: 0.25rem 0 0;
+  font-size: 0.95rem;
+}
+
+.codes .pos-camera:not(.unavailable) {
+  height: 22vh;
+  min-height: 140px;
+}

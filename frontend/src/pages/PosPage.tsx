@@ -324,6 +324,8 @@ export default function PosPage() {
           {notice.code && session.isAdmin && (
             <>
               {" "}
+              <a href={`#/codigos?codigo=${encodeURIComponent(notice.code)}`}>Asignar a un producto</a>
+              {" · "}
               <a href={`#/productos/nuevo?codigo=${encodeURIComponent(notice.code)}`}>Crear producto</a>
             </>
           )}

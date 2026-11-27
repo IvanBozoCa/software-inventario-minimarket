@@ -7,6 +7,7 @@ export type Route =
   | { page: "market" }
   | { page: "users" }
   | { page: "pos" }
+  | { page: "codes" }
   | { page: "sales" }
   | { page: "settings" };
 
@@ -24,6 +25,7 @@ export function parseRoute(hash: string): Route {
   if (head === "mercado") return { page: "market" };
   if (head === "usuarios") return { page: "users" };
   if (head === "caja") return { page: "pos" };
+  if (head === "codigos") return { page: "codes" };
   if (head === "ventas") return { page: "sales" };
   if (head === "ajustes") return { page: "settings" };
   return { page: "inventory" };

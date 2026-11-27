@@ -128,6 +128,15 @@ export default function ProductDetailPage({ productId }: { productId: string }) 
             {!product.active && <span className="chip" style={{ marginLeft: "0.5rem" }}>Inactivo</span>}
           </h2>
           <p>{subtitle}</p>
+          <p className="product-code muted">
+            {product.barcode ? `Código ${product.barcode}` : "Sin código de barras"}
+            {session.isAdmin && (
+              <>
+                {" · "}
+                <a href={`#/codigos?producto=${product.id}`}>{product.barcode ? "Cambiar" : "Escanear código"}</a>
+              </>
+            )}
+          </p>
         </div>
         {session.isAdmin && (
         <div className="actions" style={{ marginTop: 0 }}>
